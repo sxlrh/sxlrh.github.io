@@ -74,11 +74,27 @@ function bindAuthEvents() {
     // 设置按钮点击事件
     document.getElementById('settings-btn').addEventListener('click', showSettingsModal);
     
+    // 好友按钮点击事件
+    document.getElementById('friends-btn').addEventListener('click', showFriendsModal);
+    
     // 保存设置按钮点击事件
     document.getElementById('save-settings').addEventListener('click', saveSettings);
     
     // 头像上传事件
     document.getElementById('avatar-upload').addEventListener('change', handleAvatarUpload);
+    
+    // 添加好友按钮点击事件
+    document.getElementById('add-friend-btn').addEventListener('click', addFriend);
+    
+    // 发送消息按钮点击事件
+    document.getElementById('send-message-btn').addEventListener('click', sendMessage);
+    
+    // 聊天输入框回车事件
+    document.getElementById('chat-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
 }
 
 // 显示认证模态框
@@ -311,6 +327,256 @@ function saveSettings() {
     showRanking('likes');
 }
 
+// 切换图片放大缩小
+function toggleImageZoom(img) {
+    if (img.classList.contains('zoomed')) {
+        img.classList.remove('zoomed');
+        img.style.transform = 'scale(1)';
+        img.style.cursor = 'zoom-in';
+    } else {
+        img.classList.add('zoomed');
+        img.style.transform = 'scale(2)';
+        img.style.cursor = 'zoom-out';
+        img.style.zIndex = '100';
+        img.style.position = 'relative';
+        img.style.transition = 'transform 0.3s ease';
+    }
+}
+
+// 显示好友模态框
+function showFriendsModal() {
+    if (currentUser) {
+        document.getElementById('friends-modal').style.display = 'block';
+        loadFriends();
+        loadChatFriends();
+    }
+}
+
+// 切换好友标签
+function switchFriendsTab(tab) {
+    // 切换标签状态
+    const tabs = document.querySelectorAll('.friends-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // 切换内容显示
+    const contents = document.querySelectorAll('.friends-content');
+    contents.forEach(c => c.style.display = 'none');
+    document.getElementById(tab).style.display = 'block';
+    
+    // 加载对应内容
+    if (tab === 'list') {
+        loadFriends();
+    } else if (tab === 'chat') {
+        loadChatFriends();
+    }
+}
+
+// 加载好友列表
+function loadFriends() {
+    const friendsContainer = document.getElementById('friends-container');
+    friendsContainer.innerHTML = '';
+    
+    // 从本地存储加载好友数据
+    const friends = getFriends();
+    
+    if (friends.length === 0) {
+        friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
+        return;
+    }
+    
+    // 加载所有用户数据
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    
+    friends.forEach(friendId => {
+        const friend = users.find(u => u.id === friendId);
+        if (friend) {
+            const friendElement = document.createElement('div');
+            friendElement.className = 'friend-item';
+            friendElement.innerHTML = `
+                <img src="${friend.avatar}" alt="${friend.username}">
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${friend.username}</div>
+                </div>
+                <div class="friend-item-actions">
+                    <button class="upload-btn" onclick="startChat(${friend.id})" style="padding: 5px 10px;">聊天</button>
+                    <button class="upload-btn" onclick="removeFriend(${friend.id})" style="padding: 5px 10px;">删除</button>
+                </div>
+            `;
+            friendsContainer.appendChild(friendElement);
+        }
+    });
+}
+
+// 加载聊天好友列表
+function loadChatFriends() {
+    const chatFriendsList = document.getElementById('chat-friends-list');
+    chatFriendsList.innerHTML = '';
+    
+    // 从本地存储加载好友数据
+    const friends = getFriends();
+    
+    if (friends.length === 0) {
+        chatFriendsList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
+        return;
+    }
+    
+    // 加载所有用户数据
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    
+    friends.forEach(friendId => {
+        const friend = users.find(u => u.id === friendId);
+        if (friend) {
+            const friendElement = document.createElement('div');
+            friendElement.className = 'chat-friend-item';
+            friendElement.dataset.friendId = friend.id;
+            friendElement.innerHTML = `
+                <img src="${friend.avatar}" alt="${friend.username}">
+                <span>${friend.username}</span>
+            `;
+            friendElement.addEventListener('click', function() {
+                // 移除其他好友的active状态
+                document.querySelectorAll('.chat-friend-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                // 添加当前好友的active状态
+                this.classList.add('active');
+                // 开始聊天
+                startChat(friend.id);
+            });
+            chatFriendsList.appendChild(friendElement);
+        }
+    });
+}
+
+// 添加好友
+function addFriend() {
+    const username = document.getElementById('add-friend-username').value.trim();
+    
+    if (!username) {
+        alert('请输入好友用户名');
+        return;
+    }
+    
+    // 加载所有用户数据
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    
+    // 查找用户
+    const user = users.find(u => u.username === username && u.id !== currentUser.id);
+    
+    if (!user) {
+        alert('未找到该用户');
+        return;
+    }
+    
+    // 检查是否已经是好友
+    const friends = getFriends();
+    if (friends.includes(user.id)) {
+        alert('已经是好友了');
+        return;
+    }
+    
+    // 添加好友
+    friends.push(user.id);
+    localStorage.setItem('treeholeFriends_' + currentUser.id, JSON.stringify(friends));
+    
+    alert('添加好友成功');
+    document.getElementById('add-friend-username').value = '';
+    loadFriends();
+}
+
+// 删除好友
+function removeFriend(friendId) {
+    if (confirm('确定要删除这个好友吗？')) {
+        let friends = getFriends();
+        friends = friends.filter(id => id !== friendId);
+        localStorage.setItem('treeholeFriends_' + currentUser.id, JSON.stringify(friends));
+        loadFriends();
+        loadChatFriends();
+        alert('好友已删除');
+    }
+}
+
+// 获取好友列表
+function getFriends() {
+    const friends = localStorage.getItem('treeholeFriends_' + currentUser.id);
+    return friends ? JSON.parse(friends) : [];
+}
+
+// 开始聊天
+function startChat(friendId) {
+    // 加载所有用户数据
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    const friend = users.find(u => u.id === friendId);
+    
+    if (friend) {
+        document.getElementById('chat-friend-name').textContent = friend.username;
+        loadChatMessages(friendId);
+    }
+}
+
+// 加载聊天消息
+function loadChatMessages(friendId) {
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.innerHTML = '';
+    
+    // 从本地存储加载聊天记录
+    const chatKey = 'treeholeChat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
+    const messages = JSON.parse(localStorage.getItem(chatKey)) || [];
+    
+    messages.forEach(message => {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'chat-message' + (message.senderId === currentUser.id ? ' self' : '');
+        messageElement.innerHTML = `
+            <div class="chat-message-content">${message.content}</div>
+            <div class="chat-message-time">${message.timestamp}</div>
+        `;
+        chatMessages.appendChild(messageElement);
+    });
+    
+    // 滚动到底部
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// 发送消息
+function sendMessage() {
+    const chatInput = document.getElementById('chat-input');
+    const content = chatInput.value.trim();
+    
+    if (!content) {
+        return;
+    }
+    
+    // 获取当前聊天的好友
+    const activeFriend = document.querySelector('.chat-friend-item.active');
+    if (!activeFriend) {
+        alert('请选择一个好友开始聊天');
+        return;
+    }
+    
+    const friendId = parseInt(activeFriend.dataset.friendId);
+    
+    // 创建消息
+    const message = {
+        id: Date.now(),
+        senderId: currentUser.id,
+        content: content,
+        timestamp: new Date().toLocaleString('zh-CN')
+    };
+    
+    // 保存消息
+    const chatKey = 'treeholeChat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
+    const messages = JSON.parse(localStorage.getItem(chatKey)) || [];
+    messages.push(message);
+    localStorage.setItem(chatKey, JSON.stringify(messages));
+    
+    // 清空输入框
+    chatInput.value = '';
+    
+    // 重新加载消息
+    loadChatMessages(friendId);
+}
+
 // 处理图片上传
 function handleImageUpload(e) {
     const file = e.target.files[0];
@@ -463,7 +729,7 @@ function createPostElement(post) {
     
     let mediaHtml = '';
     if (post.image) {
-        mediaHtml = `<div class="post-item-media"><img src="${post.image}" alt="图片"></div>`;
+        mediaHtml = `<div class="post-item-media"><img src="${post.image}" alt="图片" onclick="toggleImageZoom(this)"></div>`;
     } else if (post.video) {
         mediaHtml = `<div class="post-item-media"><video controls><source src="${post.video}" type="video/mp4">您的浏览器不支持视频播放</video></div>`;
     } else if (post.voice) {
@@ -692,7 +958,7 @@ function createRankingPostElement(post, rank) {
     
     let mediaHtml = '';
     if (post.image) {
-        mediaHtml = `<div class="post-item-media"><img src="${post.image}" alt="图片"></div>`;
+        mediaHtml = `<div class="post-item-media"><img src="${post.image}" alt="图片" onclick="toggleImageZoom(this)"></div>`;
     } else if (post.video) {
         mediaHtml = `<div class="post-item-media"><video controls><source src="${post.video}" type="video/mp4">您的浏览器不支持视频播放</video></div>`;
     } else if (post.voice) {

@@ -19,6 +19,7 @@
                     <div id="user-info" style="display: none; align-items: center; gap: 10px;">
                         <img id="user-avatar" src="" alt="头像" class="user-avatar">
                         <span id="user-name"></span>
+                        <button id="friends-btn" class="upload-btn" style="padding: 5px 10px;">好友</button>
                         <button id="settings-btn" class="upload-btn" style="padding: 5px 10px;">设置</button>
                         <button id="logout-btn" class="upload-btn" style="padding: 5px 10px;">退出</button>
                     </div>
@@ -112,6 +113,62 @@
                     <input type="text" id="settings-username" placeholder="请输入用户名">
                 </div>
                 <button id="save-settings" class="auth-btn">保存设置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 好友模态框 -->
+    <div id="friends-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>好友</h3>
+                <span class="close-btn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="friends-tabs">
+                    <button class="friends-tab active" onclick="switchFriendsTab('list')">好友列表</button>
+                    <button class="friends-tab" onclick="switchFriendsTab('add')">添加好友</button>
+                    <button class="friends-tab" onclick="switchFriendsTab('chat')">聊天</button>
+                </div>
+                
+                <!-- 好友列表 -->
+                <div id="friends-list" class="friends-content">
+                    <div id="friends-container">
+                        <!-- 好友列表将在这里显示 -->
+                    </div>
+                </div>
+                
+                <!-- 添加好友 -->
+                <div id="add-friends" class="friends-content" style="display: none;">
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input type="text" id="add-friend-username" placeholder="请输入好友用户名">
+                    </div>
+                    <button id="add-friend-btn" class="auth-btn">添加好友</button>
+                </div>
+                
+                <!-- 聊天 -->
+                <div id="chat" class="friends-content" style="display: none;">
+                    <div class="chat-container">
+                        <div class="chat-sidebar">
+                            <div id="chat-friends-list">
+                                <!-- 好友列表将在这里显示 -->
+                            </div>
+                        </div>
+                        <div class="chat-main">
+                            <div class="chat-header">
+                                <h4 id="chat-friend-name">选择好友开始聊天</h4>
+                            </div>
+                            <div id="chat-messages" class="chat-messages">
+                                <!-- 聊天消息将在这里显示 -->
+                            </div>
+                            <div class="chat-input-area">
+                                <input type="text" id="chat-input" placeholder="输入消息...">
+                                <button id="send-message-btn" class="chat-send-btn">发送</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
