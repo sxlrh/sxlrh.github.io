@@ -44,14 +44,22 @@ function bindAuthEvents() {
     document.getElementById('login-btn').addEventListener('click', showAuthModal);
     
     // 关闭模态框按钮点击事件
-    document.querySelector('.close-btn').addEventListener('click', hideAuthModal);
+    const closeButtons = document.querySelectorAll('.close-btn');
+    closeButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const modal = this.closest('.modal');
+            modal.style.display = 'none';
+        });
+    });
     
     // 点击模态框外部关闭
     window.addEventListener('click', function(event) {
-        const modal = document.getElementById('auth-modal');
-        if (event.target === modal) {
-            hideAuthModal();
-        }
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
     });
     
     // 登录按钮点击事件
@@ -62,6 +70,15 @@ function bindAuthEvents() {
     
     // 退出按钮点击事件
     document.getElementById('logout-btn').addEventListener('click', logout);
+    
+    // 设置按钮点击事件
+    document.getElementById('settings-btn').addEventListener('click', showSettingsModal);
+    
+    // 保存设置按钮点击事件
+    document.getElementById('save-settings').addEventListener('click', saveSettings);
+    
+    // 头像上传事件
+    document.getElementById('avatar-upload').addEventListener('change', handleAvatarUpload);
 }
 
 // 显示认证模态框
@@ -233,6 +250,65 @@ function updateUserInfo() {
         document.getElementById('user-info').style.display = 'none';
         document.getElementById('login-section').style.display = 'block';
     }
+}
+
+// 显示设置模态框
+function showSettingsModal() {
+    if (currentUser) {
+        document.getElementById('settings-avatar').src = currentUser.avatar;
+        document.getElementById('settings-username').value = currentUser.username;
+        document.getElementById('settings-modal').style.display = 'block';
+    }
+}
+
+// 处理头像上传
+function handleAvatarUpload(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('settings-avatar').src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+// 保存设置
+function saveSettings() {
+    const username = document.getElementById('settings-username').value.trim();
+    const avatar = document.getElementById('settings-avatar').src;
+    
+    if (!username) {
+        alert('请输入用户名');
+        return;
+    }
+    
+    // 更新当前用户信息
+    currentUser.username = username;
+    currentUser.avatar = avatar;
+    
+    // 更新本地存储中的用户信息
+    saveUser();
+    
+    // 更新用户列表中的信息
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    const userIndex = users.findIndex(u => u.id === currentUser.id);
+    if (userIndex !== -1) {
+        users[userIndex] = currentUser;
+        localStorage.setItem('treeholeUsers', JSON.stringify(users));
+    }
+    
+    // 更新界面显示
+    updateUserInfo();
+    
+    // 隐藏模态框
+    document.getElementById('settings-modal').style.display = 'none';
+    
+    alert('设置保存成功');
+    
+    // 重新渲染帖子，更新用户信息
+    renderPosts();
+    showRanking('likes');
 }
 
 // 处理图片上传

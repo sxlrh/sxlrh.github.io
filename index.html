@@ -19,6 +19,7 @@
                     <div id="user-info" style="display: none; align-items: center; gap: 10px;">
                         <img id="user-avatar" src="" alt="头像" class="user-avatar">
                         <span id="user-name"></span>
+                        <button id="settings-btn" class="upload-btn" style="padding: 5px 10px;">设置</button>
                         <button id="logout-btn" class="upload-btn" style="padding: 5px 10px;">退出</button>
                     </div>
                     <div id="login-section">
@@ -84,6 +85,33 @@
                         </button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 个人设置模态框 -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>个人设置</h3>
+                <span class="close-btn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>头像</label>
+                    <div class="avatar-upload">
+                        <img id="settings-avatar" src="" alt="头像" class="user-avatar" style="margin-bottom: 10px;">
+                        <input type="file" id="avatar-upload" accept="image/*">
+                        <label for="avatar-upload" class="upload-btn" style="display: block; text-align: center; margin-top: 10px;">
+                            <i class="fas fa-upload"></i> 更换头像
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="settings-username" placeholder="请输入用户名">
+                </div>
+                <button id="save-settings" class="auth-btn">保存设置</button>
             </div>
         </div>
     </div>
