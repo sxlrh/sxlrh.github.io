@@ -7,15 +7,20 @@ let currentVideo = null;
 let currentVoice = null;
 let mediaRecorder = null;
 let audioChunks = [];
+let currentUser = null;
 
 // 初始化
 function init() {
+    // 从本地存储加载用户信息
+    loadUser();
     // 从本地存储加载帖子
     loadPosts();
     // 渲染帖子
     renderPosts();
     // 绑定事件
     bindEvents();
+    // 绑定认证相关事件
+    bindAuthEvents();
 }
 
 // 绑定事件
@@ -31,6 +36,203 @@ function bindEvents() {
     
     // 语音录制按钮点击事件
     document.getElementById('voice-record').addEventListener('click', toggleVoiceRecord);
+}
+
+// 绑定认证相关事件
+function bindAuthEvents() {
+    // 登录/注册按钮点击事件
+    document.getElementById('login-btn').addEventListener('click', showAuthModal);
+    
+    // 关闭模态框按钮点击事件
+    document.querySelector('.close-btn').addEventListener('click', hideAuthModal);
+    
+    // 点击模态框外部关闭
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('auth-modal');
+        if (event.target === modal) {
+            hideAuthModal();
+        }
+    });
+    
+    // 登录按钮点击事件
+    document.getElementById('submit-login').addEventListener('click', login);
+    
+    // 注册按钮点击事件
+    document.getElementById('submit-register').addEventListener('click', register);
+    
+    // 退出按钮点击事件
+    document.getElementById('logout-btn').addEventListener('click', logout);
+}
+
+// 显示认证模态框
+function showAuthModal() {
+    document.getElementById('auth-modal').style.display = 'block';
+}
+
+// 隐藏认证模态框
+function hideAuthModal() {
+    document.getElementById('auth-modal').style.display = 'none';
+}
+
+// 切换登录/注册标签
+function switchAuthTab(tab) {
+    // 切换标签状态
+    const tabs = document.querySelectorAll('.auth-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // 切换表单显示
+    if (tab === 'login') {
+        document.getElementById('login-form').style.display = 'block';
+        document.getElementById('register-form').style.display = 'none';
+        document.getElementById('modal-title').textContent = '登录';
+    } else {
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('register-form').style.display = 'block';
+        document.getElementById('modal-title').textContent = '注册';
+    }
+}
+
+// 登录
+function login() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+    
+    if (!username || !password) {
+        alert('请输入用户名和密码');
+        return;
+    }
+    
+    // 从本地存储加载用户数据
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    const user = users.find(u => u.username === username && u.password === password);
+    
+    if (user) {
+        currentUser = user;
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        alert('登录成功');
+    } else {
+        alert('用户名或密码错误');
+    }
+}
+
+// 注册
+function register() {
+    const username = document.getElementById('register-username').value.trim();
+    const password = document.getElementById('register-password').value.trim();
+    const confirmPassword = document.getElementById('register-confirm-password').value.trim();
+    
+    if (!username || !password || !confirmPassword) {
+        alert('请填写所有字段');
+        return;
+    }
+    
+    if (password !== confirmPassword) {
+        alert('两次输入的密码不一致');
+        return;
+    }
+    
+    // 从本地存储加载用户数据
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    
+    // 检查用户名是否已存在
+    if (users.some(u => u.username === username)) {
+        alert('用户名已存在');
+        return;
+    }
+    
+    // 创建新用户
+    const newUser = {
+        id: Date.now(),
+        username: username,
+        password: password,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff`,
+        createdAt: new Date().toLocaleString('zh-CN')
+    };
+    
+    users.push(newUser);
+    localStorage.setItem('treeholeUsers', JSON.stringify(users));
+    
+    currentUser = newUser;
+    saveUser();
+    updateUserInfo();
+    hideAuthModal();
+    alert('注册成功');
+}
+
+// 微信登录
+function loginWithWechat() {
+    // 模拟微信登录
+    const randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
+    const newUser = {
+        id: Date.now(),
+        username: randomUsername,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=07C160&color=fff`,
+        createdAt: new Date().toLocaleString('zh-CN')
+    };
+    
+    currentUser = newUser;
+    saveUser();
+    updateUserInfo();
+    hideAuthModal();
+    alert('微信登录成功');
+}
+
+// QQ登录
+function loginWithQQ() {
+    // 模拟QQ登录
+    const randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
+    const newUser = {
+        id: Date.now(),
+        username: randomUsername,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=12B7F5&color=fff`,
+        createdAt: new Date().toLocaleString('zh-CN')
+    };
+    
+    currentUser = newUser;
+    saveUser();
+    updateUserInfo();
+    hideAuthModal();
+    alert('QQ登录成功');
+}
+
+// 退出登录
+function logout() {
+    currentUser = null;
+    localStorage.removeItem('treeholeCurrentUser');
+    updateUserInfo();
+    alert('已退出登录');
+}
+
+// 保存用户信息到本地存储
+function saveUser() {
+    if (currentUser) {
+        localStorage.setItem('treeholeCurrentUser', JSON.stringify(currentUser));
+    }
+}
+
+// 从本地存储加载用户信息
+function loadUser() {
+    const userData = localStorage.getItem('treeholeCurrentUser');
+    if (userData) {
+        currentUser = JSON.parse(userData);
+        updateUserInfo();
+    }
+}
+
+// 更新用户信息显示
+function updateUserInfo() {
+    if (currentUser) {
+        document.getElementById('user-info').style.display = 'flex';
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('user-avatar').src = currentUser.avatar;
+        document.getElementById('user-name').textContent = currentUser.username;
+    } else {
+        document.getElementById('user-info').style.display = 'none';
+        document.getElementById('login-section').style.display = 'block';
+    }
 }
 
 // 处理图片上传
@@ -128,7 +330,12 @@ function handlePost() {
         likes: 0,
         likedBy: [],
         comments: [],
-        views: 0
+        views: 0,
+        user: currentUser ? {
+            id: currentUser.id,
+            username: currentUser.username,
+            avatar: currentUser.avatar
+        } : null
     };
     
     // 添加到帖子数组
@@ -212,7 +419,17 @@ function createPostElement(post) {
         commentsHtml += `</ul></div>`;
     }
     
+    // 用户信息
+    let userHtml = '';
+    if (post.user) {
+        userHtml = `<div class="post-user" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <img src="${post.user.avatar}" alt="${post.user.username}" class="user-avatar" style="width: 30px; height: 30px;">
+            <span class="user-name" style="font-weight: 600; color: #667eea;">${post.user.username}</span>
+        </div>`;
+    }
+    
     postDiv.innerHTML = `
+        ${userHtml}
         <div class="post-item-content">${post.text || ''}</div>
         ${mediaHtml}
         <div class="post-item-meta">
@@ -431,10 +648,20 @@ function createRankingPostElement(post, rank) {
         commentsHtml += `</ul></div>`;
     }
     
+    // 用户信息
+    let userHtml = '';
+    if (post.user) {
+        userHtml = `<div class="post-user" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <img src="${post.user.avatar}" alt="${post.user.username}" class="user-avatar" style="width: 30px; height: 30px;">
+            <span class="user-name" style="font-weight: 600; color: #667eea;">${post.user.username}</span>
+        </div>`;
+    }
+    
     postDiv.innerHTML = `
         <div style="display: flex; align-items: flex-start; gap: 15px;">
             <div class="rank-number">${rank}</div>
             <div style="flex: 1;">
+                ${userHtml}
                 <div class="post-item-content">${post.text || ''}</div>
                 ${mediaHtml}
                 <div class="post-item-meta">

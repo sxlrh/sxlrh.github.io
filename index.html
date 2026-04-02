@@ -10,10 +10,83 @@
 <body>
     <header>
         <div class="container">
-            <h1 class="logo">心灵树洞</h1>
-            <p class="slogan">在这里，你可以倾诉一切</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1 class="logo">心灵树洞</h1>
+                    <p class="slogan">在这里，你可以倾诉一切</p>
+                </div>
+                <div class="user-section">
+                    <div id="user-info" style="display: none; align-items: center; gap: 10px;">
+                        <img id="user-avatar" src="" alt="头像" class="user-avatar">
+                        <span id="user-name"></span>
+                        <button id="logout-btn" class="upload-btn" style="padding: 5px 10px;">退出</button>
+                    </div>
+                    <div id="login-section">
+                        <button id="login-btn" class="upload-btn" style="padding: 8px 15px;">登录/注册</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </header>
+
+    <!-- 登录/注册模态框 -->
+    <div id="auth-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">登录</h3>
+                <span class="close-btn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="auth-tabs">
+                    <button class="auth-tab active" onclick="switchAuthTab('login')">登录</button>
+                    <button class="auth-tab" onclick="switchAuthTab('register')">注册</button>
+                </div>
+                
+                <!-- 登录表单 -->
+                <div id="login-form" class="auth-form">
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input type="text" id="login-username" placeholder="请输入用户名">
+                    </div>
+                    <div class="form-group">
+                        <label>密码</label>
+                        <input type="password" id="login-password" placeholder="请输入密码">
+                    </div>
+                    <button id="submit-login" class="auth-btn">登录</button>
+                </div>
+                
+                <!-- 注册表单 -->
+                <div id="register-form" class="auth-form" style="display: none;">
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input type="text" id="register-username" placeholder="请输入用户名">
+                    </div>
+                    <div class="form-group">
+                        <label>密码</label>
+                        <input type="password" id="register-password" placeholder="请输入密码">
+                    </div>
+                    <div class="form-group">
+                        <label>确认密码</label>
+                        <input type="password" id="register-confirm-password" placeholder="请确认密码">
+                    </div>
+                    <button id="submit-register" class="auth-btn">注册</button>
+                </div>
+                
+                <!-- 第三方登录 -->
+                <div class="third-party-login">
+                    <p>其他登录方式</p>
+                    <div class="login-buttons">
+                        <button class="third-party-btn wechat-btn" onclick="loginWithWechat()">
+                            <i class="fab fa-weixin"></i> 微信登录
+                        </button>
+                        <button class="third-party-btn qq-btn" onclick="loginWithQQ()">
+                            <i class="fab fa-qq"></i> QQ登录
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <main>
         <div class="container">
