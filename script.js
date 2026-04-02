@@ -1,20 +1,5 @@
 // 文章管理系统
 
-// Firebase配置
-const firebaseConfig = {
-    apiKey: "AIzaSyB9f4pD1z4g8z8z8z8z8z8z8z8z8z8z8",
-    authDomain: "treehole-website-12345.firebaseapp.com",
-    databaseURL: "https://treehole-website-12345-default-rtdb.firebaseio.com",
-    projectId: "treehole-website-12345",
-    storageBucket: "treehole-website-12345.appspot.com",
-    messagingSenderId: "1234567890",
-    appId: "1:1234567890:web:abcdef1234567890"
-};
-
-// 初始化Firebase
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
-
 // 全局变量
 let posts = [];
 let currentImage = null;
@@ -25,8 +10,10 @@ let audioChunks = [];
 
 // 初始化
 function init() {
-    // 从Firebase加载帖子
+    // 从本地存储加载帖子
     loadPosts();
+    // 渲染帖子
+    renderPosts();
     // 绑定事件
     bindEvents();
 }
@@ -224,17 +211,52 @@ function deletePost(postId) {
     }
 }
 
-// 保存帖子到Firebase
+// 保存帖子到本地存储
 function savePosts() {
-    database.ref('posts').set(posts);
+    localStorage.setItem('treeholePosts', JSON.stringify(posts));
 }
 
-// 从Firebase加载帖子
+// 从本地存储加载帖子
 function loadPosts() {
-    database.ref('posts').once('value', (snapshot) => {
-        posts = snapshot.val() || [];
-        renderPosts();
-    });
+    const storedPosts = localStorage.getItem('treeholePosts');
+    if (storedPosts) {
+        posts = JSON.parse(storedPosts);
+    }
+}
+
+// 导出数据
+function exportData() {
+    const dataStr = JSON.stringify(posts);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'treehole-data.json';
+    link.click();
+}
+
+// 导入数据
+function importData(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const importedPosts = JSON.parse(e.target.result);
+                if (Array.isArray(importedPosts)) {
+                    posts = importedPosts;
+                    savePosts();
+                    renderPosts();
+                    alert('数据导入成功');
+                } else {
+                    alert('无效的数据格式');
+                }
+            } catch (error) {
+                alert('数据导入失败');
+            }
+        };
+        reader.readAsText(file);
+    }
 }
 
 // 添加一些示例帖子
@@ -245,6 +267,7 @@ function addSamplePosts() {
             text: '今天天气真好，心情也跟着变好了！',
             image: null,
             video: null,
+            voice: null,
             timestamp: new Date().toLocaleString('zh-CN'),
             likes: 5
         },
@@ -253,6 +276,7 @@ function addSamplePosts() {
             text: '分享一张美丽的风景照片',
             image: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=beautiful%20landscape%20with%20mountains%20and%20lake&image_size=landscape_16_9',
             video: null,
+            voice: null,
             timestamp: new Date(Date.now() - 3600000).toLocaleString('zh-CN'),
             likes: 12
         }
