@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>心灵树洞 - 分享你的故事</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1 class="logo">心灵树洞</h1>
+            <p class="slogan">在这里，你可以倾诉一切</p>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <!-- 发布区域 -->
+            <section class="post-section">
+                <div class="post-card">
+                    <div class="post-header">
+                        <h2>分享你的故事</h2>
+                    </div>
+                    <div class="post-content">
+                        <textarea id="post-text" placeholder="在这里写下你的想法..."></textarea>
+                        <div class="post-actions">
+                            <div class="file-upload">
+                                <label for="image-upload" class="upload-btn">
+                                    <i class="fas fa-image"></i> 图片
+                                </label>
+                                <input type="file" id="image-upload" accept="image/*" style="display: none;">
+                            </div>
+                            <div class="file-upload">
+                                <label for="video-upload" class="upload-btn">
+                                    <i class="fas fa-video"></i> 视频
+                                </label>
+                                <input type="file" id="video-upload" accept="video/*" style="display: none;">
+                            </div>
+                            <div class="file-upload">
+                                <button id="voice-record" class="upload-btn">
+                                    <i class="fas fa-microphone"></i> 语音
+                                </button>
+                            </div>
+                            <button id="post-button" class="post-btn">发布</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 内容展示区域 -->
+            <section class="content-section">
+                <h2>最新分享</h2>
+                <div id="posts-container" class="posts-grid">
+                    <!-- 动态生成的帖子将显示在这里 -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 心灵树洞 | 在这里，你可以自由表达</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
