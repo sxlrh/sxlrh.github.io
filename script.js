@@ -176,9 +176,12 @@ function register() {
         return;
     }
     
+    // 生成唯一ID
+    const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    
     // 创建新用户
     const newUser = {
-        id: Date.now(),
+        id: uniqueId,
         username: username,
         password: password,
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff`,
@@ -192,43 +195,69 @@ function register() {
     saveUser();
     updateUserInfo();
     hideAuthModal();
-    alert('注册成功');
+    alert('注册成功，您的用户ID是：' + uniqueId);
 }
 
 // 微信登录
 function loginWithWechat() {
     // 模拟微信登录
-    const randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
+    let randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
+    
+    // 检查用户名是否已存在
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    while (users.some(u => u.username === randomUsername)) {
+        randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
+    }
+    
+    // 生成唯一ID
+    const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    
     const newUser = {
-        id: Date.now(),
+        id: uniqueId,
         username: randomUsername,
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=07C160&color=fff`,
         createdAt: new Date().toLocaleString('zh-CN')
     };
     
-    currentUser = newUser;
-    saveUser();
-    updateUserInfo();
-    hideAuthModal();
-    alert('微信登录成功');
-}
-
-// QQ登录
-function loginWithQQ() {
-    // 模拟QQ登录
-    const randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
-    const newUser = {
-        id: Date.now(),
-        username: randomUsername,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=12B7F5&color=fff`,
-        createdAt: new Date().toLocaleString('zh-CN')
-    };
+    users.push(newUser);
+    localStorage.setItem('treeholeUsers', JSON.stringify(users));
     
     currentUser = newUser;
     saveUser();
     updateUserInfo();
     hideAuthModal();
-    alert('QQ登录成功');
+    alert('微信登录成功，您的用户ID是：' + uniqueId);
+}
+
+// QQ登录
+function loginWithQQ() {
+    // 模拟QQ登录
+    let randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
+    
+    // 检查用户名是否已存在
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    while (users.some(u => u.username === randomUsername)) {
+        randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
+    }
+    
+    // 生成唯一ID
+    const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    
+    const newUser = {
+        id: uniqueId,
+        username: randomUsername,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=12B7F5&color=fff`,
+        createdAt: new Date().toLocaleString('zh-CN')
+    };
+    
+    users.push(newUser);
+    localStorage.setItem('treeholeUsers', JSON.stringify(users));
+    
+    currentUser = newUser;
+    saveUser();
+    updateUserInfo();
+    hideAuthModal();
+    alert('QQ登录成功，您的用户ID是：' + uniqueId);
 }
 
 // 退出登录
@@ -273,6 +302,7 @@ function showSettingsModal() {
     if (currentUser) {
         document.getElementById('settings-avatar').src = currentUser.avatar;
         document.getElementById('settings-username').value = currentUser.username;
+        document.getElementById('settings-user-id').value = currentUser.id;
         document.getElementById('settings-modal').style.display = 'block';
     }
 }
@@ -451,18 +481,18 @@ function loadChatFriends() {
 
 // 添加好友
 function addFriend() {
-    const username = document.getElementById('add-friend-username').value.trim();
+    const input = document.getElementById('add-friend-username').value.trim();
     
-    if (!username) {
-        alert('请输入好友用户名');
+    if (!input) {
+        alert('请输入好友用户名或用户ID');
         return;
     }
     
     // 加载所有用户数据
     const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
     
-    // 查找用户
-    const user = users.find(u => u.username === username && u.id !== currentUser.id);
+    // 查找用户（同时支持用户名和ID）
+    const user = users.find(u => (u.username === input || u.id === input) && u.id !== currentUser.id);
     
     if (!user) {
         alert('未找到该用户');
