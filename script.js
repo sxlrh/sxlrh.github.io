@@ -95,6 +95,11 @@ function bindAuthEvents() {
             sendMessage();
         }
     });
+    
+    // 好友搜索事件
+    document.getElementById('friend-search').addEventListener('input', function() {
+        searchFriends(this.value);
+    });
 }
 
 // 显示认证模态框
@@ -350,7 +355,7 @@ function saveSettings() {
     // 隐藏模态框
     document.getElementById('settings-modal').style.display = 'none';
     
-    alert('设置保存成功');
+    showToast('设置保存成功');
     
     // 重新渲染帖子，更新用户信息
     renderPosts();
@@ -371,6 +376,30 @@ function toggleImageZoom(img) {
         img.style.position = 'relative';
         img.style.transition = 'transform 0.3s ease';
     }
+}
+
+// 显示操作反馈
+function showToast(message) {
+    // 创建toast元素
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    
+    // 添加到页面
+    document.body.appendChild(toast);
+    
+    // 显示toast
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 100);
+    
+    // 3秒后隐藏toast
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, 3000);
 }
 
 // 显示好友模态框
@@ -510,7 +539,7 @@ function addFriend() {
     friends.push(user.id);
     localStorage.setItem('treeholeFriends_' + currentUser.id, JSON.stringify(friends));
     
-    alert('添加好友成功');
+    showToast('添加好友成功');
     document.getElementById('add-friend-username').value = '';
     loadFriends();
 }
@@ -523,7 +552,7 @@ function removeFriend(friendId) {
         localStorage.setItem('treeholeFriends_' + currentUser.id, JSON.stringify(friends));
         loadFriends();
         loadChatFriends();
-        alert('好友已删除');
+        showToast('好友已删除');
     }
 }
 
@@ -568,6 +597,54 @@ function loadChatMessages(friendId) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// 搜索好友
+function searchFriends(keyword) {
+    const friendsContainer = document.getElementById('friends-container');
+    friendsContainer.innerHTML = '';
+    
+    // 从本地存储加载好友数据
+    const friends = getFriends();
+    
+    if (friends.length === 0) {
+        friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
+        return;
+    }
+    
+    // 加载所有用户数据
+    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
+    
+    // 过滤好友
+    const filteredFriends = friends.filter(friendId => {
+        const friend = users.find(u => u.id === friendId);
+        return friend && (friend.username.toLowerCase().includes(keyword.toLowerCase()) || friend.id.includes(keyword));
+    });
+    
+    if (filteredFriends.length === 0) {
+        friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">未找到匹配的好友</p>';
+        return;
+    }
+    
+    filteredFriends.forEach(friendId => {
+        const friend = users.find(u => u.id === friendId);
+        if (friend) {
+            const friendElement = document.createElement('div');
+            friendElement.className = 'friend-item';
+            friendElement.innerHTML = `
+                <img src="${friend.avatar}" alt="${friend.username}">
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${friend.username}</div>
+                    <div style="font-size: 0.8rem; color: #999;">ID: ${friend.id}</div>
+                </div>
+                <div class="friend-item-actions">
+                    <button class="upload-btn" onclick="startChat(${friend.id})" style="padding: 5px 10px;">聊天</button>
+                    <button class="upload-btn" onclick="removeFriend(${friend.id})" style="padding: 5px 10px;">删除</button>
+                </div>
+            `;
+            friendsContainer.appendChild(friendElement);
+        }
+    });
+}
+
 // 发送消息
 function sendMessage() {
     const chatInput = document.getElementById('chat-input');
@@ -605,6 +682,9 @@ function sendMessage() {
     
     // 重新加载消息
     loadChatMessages(friendId);
+    
+    // 显示发送成功提示
+    showToast('消息发送成功');
 }
 
 // 处理图片上传
@@ -726,6 +806,9 @@ function handlePost() {
     currentVoice = null;
     document.getElementById('image-upload').value = '';
     document.getElementById('video-upload').value = '';
+    
+    // 显示发布成功提示
+    showToast('发布成功');
 }
 
 // 渲染帖子
@@ -848,7 +931,7 @@ function toggleLike(postId) {
                 showRanking('likes');
             }
         } else {
-            alert('你已经点过赞了');
+            showToast('你已经点过赞了');
         }
     }
 }
@@ -859,6 +942,7 @@ function deletePost(postId) {
         posts = posts.filter(p => p.id !== postId);
         savePosts();
         renderPosts();
+        showToast('删除成功');
     }
 }
 
