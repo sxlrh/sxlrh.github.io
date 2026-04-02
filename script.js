@@ -8,6 +8,8 @@ let currentVoice = null;
 let mediaRecorder = null;
 let audioChunks = [];
 let currentUser = null;
+let lastUpdateTime = 0;
+let updateInterval = null;
 
 // 初始化
 function init() {
@@ -21,6 +23,8 @@ function init() {
     bindEvents();
     // 绑定认证相关事件
     bindAuthEvents();
+    // 启动自动更新
+    startAutoUpdate();
 }
 
 // 绑定事件
@@ -402,6 +406,45 @@ function showToast(message) {
     }, 3000);
 }
 
+// 启动自动更新
+function startAutoUpdate() {
+    // 每5秒检查一次更新
+    updateInterval = setInterval(() => {
+        checkForUpdates();
+    }, 5000);
+}
+
+// 检查更新
+function checkForUpdates() {
+    const storedPosts = localStorage.getItem('treeholePosts');
+    if (storedPosts) {
+        const updatedPosts = JSON.parse(storedPosts);
+        // 检查是否有新内容
+        if (updatedPosts.length !== posts.length) {
+            posts = updatedPosts;
+            renderPosts();
+            showToast('有新内容更新');
+        } else {
+            // 检查是否有内容变化
+            const currentPostsString = JSON.stringify(posts);
+            const updatedPostsString = JSON.stringify(updatedPosts);
+            if (currentPostsString !== updatedPostsString) {
+                posts = updatedPosts;
+                renderPosts();
+                showToast('内容已更新');
+            }
+        }
+    }
+}
+
+// 停止自动更新
+function stopAutoUpdate() {
+    if (updateInterval) {
+        clearInterval(updateInterval);
+        updateInterval = null;
+    }
+}
+
 // 显示好友模态框
 function showFriendsModal() {
     if (currentUser) {
@@ -767,13 +810,20 @@ function handlePost() {
     const text = document.getElementById('post-text').value.trim();
     
     if (!text && !currentImage && !currentVideo && !currentVoice) {
-        alert('请输入内容或上传媒体');
+        showToast('请输入内容或上传媒体');
+        return;
+    }
+    
+    // 确保用户已登录
+    if (!currentUser) {
+        showToast('请先登录');
+        showAuthModal();
         return;
     }
     
     // 创建新帖子
     const newPost = {
-        id: Date.now(),
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         text: text,
         image: currentImage,
         video: currentVideo,
@@ -783,18 +833,22 @@ function handlePost() {
         likedBy: [],
         comments: [],
         views: 0,
-        user: currentUser ? {
+        user: {
             id: currentUser.id,
             username: currentUser.username,
             avatar: currentUser.avatar
-        } : null
+        }
     };
     
-    // 添加到帖子数组
-    posts.unshift(newPost);
+    // 从本地存储加载最新的帖子（确保不会覆盖其他用户的帖子）
+    const latestPosts = JSON.parse(localStorage.getItem('treeholePosts')) || [];
+    latestPosts.unshift(newPost);
     
     // 保存到本地存储
-    savePosts();
+    localStorage.setItem('treeholePosts', JSON.stringify(latestPosts));
+    
+    // 更新本地帖子数组
+    posts = latestPosts;
     
     // 渲染帖子
     renderPosts();
@@ -866,7 +920,17 @@ function createPostElement(post) {
             <h4>评论 (${post.comments.length})</h4>
             <ul class="comments-list">`;
         post.comments.forEach(comment => {
-            commentsHtml += `<li class="comment-item">
+            // 评论用户信息
+        let commentUserHtml = '';
+        if (comment.user) {
+            commentUserHtml = `<div class="comment-user" style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
+                <img src="${comment.user.avatar}" alt="${comment.user.username}" style="width: 20px; height: 20px; border-radius: 50%;">
+                <span style="font-weight: 600; font-size: 0.8rem; color: #667eea;">${comment.user.username}</span>
+            </div>`;
+        }
+        
+        commentsHtml += `<li class="comment-item">
+                ${commentUserHtml}
                 <span class="comment-text">${comment.text}</span>
                 <span class="comment-time">${comment.timestamp}</span>
             </li>`;
@@ -906,30 +970,44 @@ function createPostElement(post) {
 
 // 切换点赞
 function toggleLike(postId) {
-    const post = posts.find(p => p.id === postId);
+    // 确保用户已登录
+    if (!currentUser) {
+        showToast('请先登录');
+        showAuthModal();
+        return;
+    }
+    
+    // 从本地存储加载最新的帖子
+    const latestPosts = JSON.parse(localStorage.getItem('treeholePosts')) || [];
+    const post = latestPosts.find(p => p.id === postId);
+    
     if (post) {
-        // 获取用户标识（使用localStorage存储）
-        let userId = localStorage.getItem('treeholeUserId');
-        if (!userId) {
-            userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('treeholeUserId', userId);
-        }
-        
         // 检查是否已经点过赞
         if (!post.likedBy) {
             post.likedBy = [];
         }
         
-        if (!post.likedBy.includes(userId)) {
-            post.likedBy.push(userId);
+        if (!post.likedBy.includes(currentUser.id)) {
+            post.likedBy.push(currentUser.id);
             post.likes++;
-            savePosts();
+            
+            // 保存到本地存储
+            localStorage.setItem('treeholePosts', JSON.stringify(latestPosts));
+            
+            // 更新本地帖子数组
+            posts = latestPosts;
+            
+            // 渲染帖子
             renderPosts();
+            
             // 更新点赞榜
             const activeTab = document.querySelector('.ranking-tab.active');
             if (activeTab && activeTab.textContent.includes('点赞')) {
                 showRanking('likes');
             }
+            
+            // 显示点赞成功提示
+            showToast('点赞成功');
         } else {
             showToast('你已经点过赞了');
         }
@@ -938,10 +1016,36 @@ function toggleLike(postId) {
 
 // 删除帖子
 function deletePost(postId) {
+    // 确保用户已登录
+    if (!currentUser) {
+        showToast('请先登录');
+        showAuthModal();
+        return;
+    }
+    
+    // 从本地存储加载最新的帖子
+    const latestPosts = JSON.parse(localStorage.getItem('treeholePosts')) || [];
+    const post = latestPosts.find(p => p.id === postId);
+    
+    // 检查是否是帖子的作者
+    if (!post || !post.user || post.user.id !== currentUser.id) {
+        showToast('你没有权限删除这条帖子');
+        return;
+    }
+    
     if (confirm('确定要删除这条分享吗？')) {
-        posts = posts.filter(p => p.id !== postId);
-        savePosts();
+        const updatedPosts = latestPosts.filter(p => p.id !== postId);
+        
+        // 保存到本地存储
+        localStorage.setItem('treeholePosts', JSON.stringify(updatedPosts));
+        
+        // 更新本地帖子数组
+        posts = updatedPosts;
+        
+        // 渲染帖子
         renderPosts();
+        
+        // 显示删除成功提示
         showToast('删除成功');
     }
 }
@@ -956,6 +1060,10 @@ function loadPosts() {
     const storedPosts = localStorage.getItem('treeholePosts');
     if (storedPosts) {
         posts = JSON.parse(storedPosts);
+    } else {
+        // 初始化空帖子数组
+        posts = [];
+        localStorage.setItem('treeholePosts', JSON.stringify(posts));
     }
 }
 
@@ -1000,29 +1108,54 @@ function addComment(postId) {
     const commentText = commentInput.value.trim();
     
     if (!commentText) {
-        alert('请输入评论内容');
+        showToast('请输入评论内容');
         return;
     }
     
-    const post = posts.find(p => p.id === postId);
+    // 确保用户已登录
+    if (!currentUser) {
+        showToast('请先登录');
+        showAuthModal();
+        return;
+    }
+    
+    // 从本地存储加载最新的帖子
+    const latestPosts = JSON.parse(localStorage.getItem('treeholePosts')) || [];
+    const post = latestPosts.find(p => p.id === postId);
+    
     if (post) {
         if (!post.comments) {
             post.comments = [];
         }
         
         const newComment = {
-            id: Date.now(),
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
             text: commentText,
-            timestamp: new Date().toLocaleString('zh-CN')
+            timestamp: new Date().toLocaleString('zh-CN'),
+            user: {
+                id: currentUser.id,
+                username: currentUser.username,
+                avatar: currentUser.avatar
+            }
         };
         
         post.comments.push(newComment);
-        savePosts();
+        
+        // 保存到本地存储
+        localStorage.setItem('treeholePosts', JSON.stringify(latestPosts));
+        
+        // 更新本地帖子数组
+        posts = latestPosts;
+        
+        // 渲染帖子
         renderPosts();
         showRanking('comments'); // 更新评论榜
         
         // 清空评论输入框
         commentInput.value = '';
+        
+        // 显示评论成功提示
+        showToast('评论成功');
     }
 }
 
@@ -1096,7 +1229,17 @@ function createRankingPostElement(post, rank) {
             <h4>评论 (${post.comments.length})</h4>
             <ul class="comments-list">`;
         post.comments.forEach(comment => {
-            commentsHtml += `<li class="comment-item">
+            // 评论用户信息
+        let commentUserHtml = '';
+        if (comment.user) {
+            commentUserHtml = `<div class="comment-user" style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
+                <img src="${comment.user.avatar}" alt="${comment.user.username}" style="width: 20px; height: 20px; border-radius: 50%;">
+                <span style="font-weight: 600; font-size: 0.8rem; color: #667eea;">${comment.user.username}</span>
+            </div>`;
+        }
+        
+        commentsHtml += `<li class="comment-item">
+                ${commentUserHtml}
                 <span class="comment-text">${comment.text}</span>
                 <span class="comment-time">${comment.timestamp}</span>
             </li>`;
