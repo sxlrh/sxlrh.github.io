@@ -231,6 +231,14 @@ main {
     color: #667eea;
 }
 
+.action-btn.liked {
+    color: #ff6b6b;
+}
+
+.action-btn.liked:hover {
+    color: #ff5252;
+}
+
 /* 页脚样式 */
 footer {
     background: #333;
@@ -292,6 +300,57 @@ footer p {
 
 .post-item {
     animation: fadeIn 0.5s ease;
+}
+
+/* 排行榜样式 */
+.ranking-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 10px;
+}
+
+.ranking-tab {
+    padding: 8px 20px;
+    background: #f8f9fa;
+    border: 2px solid #e0e0e0;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+}
+
+.ranking-tab:hover {
+    background: #e9ecef;
+    border-color: #667eea;
+}
+
+.ranking-tab.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: #667eea;
+}
+
+.rank-number {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #667eea;
+    min-width: 30px;
+    text-align: center;
+    margin-top: 5px;
+}
+
+.rank-number:nth-child(1) {
+    color: #ffd700;
+}
+
+.rank-number:nth-child(2) {
+    color: #c0c0c0;
+}
+
+.rank-number:nth-child(3) {
+    color: #cd7f32;
 }
 
 /* 评论样式 */

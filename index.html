@@ -49,6 +49,19 @@
                 </div>
             </section>
 
+            <!-- 排行榜区域 -->
+            <section class="content-section">
+                <h2>排行榜</h2>
+                <div class="ranking-tabs">
+                    <button class="ranking-tab active" onclick="showRanking('likes')">点赞榜</button>
+                    <button class="ranking-tab" onclick="showRanking('views')">浏览榜</button>
+                    <button class="ranking-tab" onclick="showRanking('comments')">评论榜</button>
+                </div>
+                <div id="ranking-container" class="posts-grid">
+                    <!-- 排行榜内容将在这里显示 -->
+                </div>
+            </section>
+
             <!-- 内容展示区域 -->
             <section class="content-section">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">

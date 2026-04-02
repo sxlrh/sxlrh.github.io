@@ -127,7 +127,8 @@ function handlePost() {
         timestamp: new Date().toLocaleString('zh-CN'),
         likes: 0,
         likedBy: [],
-        comments: []
+        comments: [],
+        views: 0
     };
     
     // 添加到帖子数组
@@ -170,6 +171,13 @@ function createPostElement(post) {
     postDiv.className = 'post-item';
     postDiv.dataset.id = post.id;
     
+    // 增加浏览次数
+    if (!post.views) {
+        post.views = 0;
+    }
+    post.views++;
+    savePosts();
+    
     let mediaHtml = '';
     if (post.image) {
         mediaHtml = `<div class="post-item-media"><img src="${post.image}" alt="图片"></div>`;
@@ -178,6 +186,16 @@ function createPostElement(post) {
     } else if (post.voice) {
         mediaHtml = `<div class="post-item-media"><audio controls><source src="${post.voice}" type="audio/wav">您的浏览器不支持音频播放</div>`;
     }
+    
+    // 检查用户是否已点赞
+    let userId = localStorage.getItem('treeholeUserId');
+    if (!userId) {
+        userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('treeholeUserId', userId);
+    }
+    
+    const isLiked = post.likedBy && post.likedBy.includes(userId);
+    const likeButtonClass = isLiked ? 'action-btn like-btn liked' : 'action-btn like-btn';
     
     // 渲染评论
     let commentsHtml = '';
@@ -198,9 +216,9 @@ function createPostElement(post) {
         <div class="post-item-content">${post.text || ''}</div>
         ${mediaHtml}
         <div class="post-item-meta">
-            <span class="post-time">${post.timestamp}</span>
+            <span class="post-time">${post.timestamp} · ${post.views} 浏览</span>
             <div class="post-item-actions">
-                <button class="action-btn like-btn" onclick="toggleLike(${post.id})"><i class="fas fa-heart"></i> <span>${post.likes}</span></button>
+                <button class="${likeButtonClass}" onclick="toggleLike(${post.id})"><i class="fas fa-heart"></i> <span>${post.likes}</span></button>
                 <button class="action-btn delete-btn" onclick="deletePost(${post.id})"><i class="fas fa-trash"></i> 删除</button>
             </div>
         </div>
@@ -235,6 +253,11 @@ function toggleLike(postId) {
             post.likes++;
             savePosts();
             renderPosts();
+            // 更新点赞榜
+            const activeTab = document.querySelector('.ranking-tab.active');
+            if (activeTab && activeTab.textContent.includes('点赞')) {
+                showRanking('likes');
+            }
         } else {
             alert('你已经点过赞了');
         }
@@ -323,10 +346,114 @@ function addComment(postId) {
         post.comments.push(newComment);
         savePosts();
         renderPosts();
+        showRanking('comments'); // 更新评论榜
         
         // 清空评论输入框
         commentInput.value = '';
     }
+}
+
+// 显示排行榜
+function showRanking(type) {
+    // 更新标签状态
+    const tabs = document.querySelectorAll('.ranking-tab');
+    tabs.forEach(tab => tab.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // 排序帖子
+    let sortedPosts = [...posts];
+    
+    switch (type) {
+        case 'likes':
+            sortedPosts.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+            break;
+        case 'views':
+            sortedPosts.sort((a, b) => (b.views || 0) - (a.views || 0));
+            break;
+        case 'comments':
+            sortedPosts.sort((a, b) => (b.comments ? b.comments.length : 0) - (a.comments ? a.comments.length : 0));
+            break;
+    }
+    
+    // 显示前10个帖子
+    const rankingContainer = document.getElementById('ranking-container');
+    rankingContainer.innerHTML = '';
+    
+    if (sortedPosts.length === 0) {
+        rankingContainer.innerHTML = '<p class="no-posts">还没有分享，快来发布第一条吧！</p>';
+        return;
+    }
+    
+    const topPosts = sortedPosts.slice(0, 10);
+    topPosts.forEach((post, index) => {
+        const postElement = createRankingPostElement(post, index + 1);
+        rankingContainer.appendChild(postElement);
+    });
+}
+
+// 创建排行榜帖子元素
+function createRankingPostElement(post, rank) {
+    const postDiv = document.createElement('div');
+    postDiv.className = 'post-item';
+    postDiv.dataset.id = post.id;
+    
+    let mediaHtml = '';
+    if (post.image) {
+        mediaHtml = `<div class="post-item-media"><img src="${post.image}" alt="图片"></div>`;
+    } else if (post.video) {
+        mediaHtml = `<div class="post-item-media"><video controls><source src="${post.video}" type="video/mp4">您的浏览器不支持视频播放</video></div>`;
+    } else if (post.voice) {
+        mediaHtml = `<div class="post-item-media"><audio controls><source src="${post.voice}" type="audio/wav">您的浏览器不支持音频播放</div>`;
+    }
+    
+    // 检查用户是否已点赞
+    let userId = localStorage.getItem('treeholeUserId');
+    if (!userId) {
+        userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('treeholeUserId', userId);
+    }
+    
+    const isLiked = post.likedBy && post.likedBy.includes(userId);
+    const likeButtonClass = isLiked ? 'action-btn like-btn liked' : 'action-btn like-btn';
+    
+    // 渲染评论
+    let commentsHtml = '';
+    if (post.comments && post.comments.length > 0) {
+        commentsHtml = `<div class="post-comments">
+            <h4>评论 (${post.comments.length})</h4>
+            <ul class="comments-list">`;
+        post.comments.forEach(comment => {
+            commentsHtml += `<li class="comment-item">
+                <span class="comment-text">${comment.text}</span>
+                <span class="comment-time">${comment.timestamp}</span>
+            </li>`;
+        });
+        commentsHtml += `</ul></div>`;
+    }
+    
+    postDiv.innerHTML = `
+        <div style="display: flex; align-items: flex-start; gap: 15px;">
+            <div class="rank-number">${rank}</div>
+            <div style="flex: 1;">
+                <div class="post-item-content">${post.text || ''}</div>
+                ${mediaHtml}
+                <div class="post-item-meta">
+                    <span class="post-time">${post.timestamp} · ${post.views} 浏览</span>
+                    <div class="post-item-actions">
+                        <button class="${likeButtonClass}" onclick="toggleLike(${post.id})"><i class="fas fa-heart"></i> <span>${post.likes}</span></button>
+                        <button class="action-btn delete-btn" onclick="deletePost(${post.id})"><i class="fas fa-trash"></i> 删除</button>
+                    </div>
+                </div>
+                ${commentsHtml}
+                <div class="comment-form">
+                    <input type="text" class="comment-input" placeholder="写下你的评论..." data-post-id="${post.id}">
+                    <button class="comment-btn" onclick="addComment(${post.id})"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    return postDiv;
 }
 
 // 添加一些示例帖子
@@ -364,4 +491,6 @@ window.addEventListener('DOMContentLoaded', function() {
     if (posts.length === 0) {
         addSamplePosts();
     }
+    // 初始化排行榜
+    showRanking('likes');
 });
