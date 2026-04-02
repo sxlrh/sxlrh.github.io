@@ -125,7 +125,9 @@ function handlePost() {
         video: currentVideo,
         voice: currentVoice,
         timestamp: new Date().toLocaleString('zh-CN'),
-        likes: 0
+        likes: 0,
+        likedBy: [],
+        comments: []
     };
     
     // 添加到帖子数组
@@ -174,7 +176,22 @@ function createPostElement(post) {
     } else if (post.video) {
         mediaHtml = `<div class="post-item-media"><video controls><source src="${post.video}" type="video/mp4">您的浏览器不支持视频播放</video></div>`;
     } else if (post.voice) {
-        mediaHtml = `<div class="post-item-media"><audio controls><source src="${post.voice}" type="audio/wav">您的浏览器不支持音频播放</audio></div>`;
+        mediaHtml = `<div class="post-item-media"><audio controls><source src="${post.voice}" type="audio/wav">您的浏览器不支持音频播放</div>`;
+    }
+    
+    // 渲染评论
+    let commentsHtml = '';
+    if (post.comments && post.comments.length > 0) {
+        commentsHtml = `<div class="post-comments">
+            <h4>评论 (${post.comments.length})</h4>
+            <ul class="comments-list">`;
+        post.comments.forEach(comment => {
+            commentsHtml += `<li class="comment-item">
+                <span class="comment-text">${comment.text}</span>
+                <span class="comment-time">${comment.timestamp}</span>
+            </li>`;
+        });
+        commentsHtml += `</ul></div>`;
     }
     
     postDiv.innerHTML = `
@@ -187,6 +204,11 @@ function createPostElement(post) {
                 <button class="action-btn delete-btn" onclick="deletePost(${post.id})"><i class="fas fa-trash"></i> 删除</button>
             </div>
         </div>
+        ${commentsHtml}
+        <div class="comment-form">
+            <input type="text" class="comment-input" placeholder="写下你的评论..." data-post-id="${post.id}">
+            <button class="comment-btn" onclick="addComment(${post.id})"><i class="fas fa-paper-plane"></i></button>
+        </div>
     `;
     
     return postDiv;
@@ -196,9 +218,26 @@ function createPostElement(post) {
 function toggleLike(postId) {
     const post = posts.find(p => p.id === postId);
     if (post) {
-        post.likes++;
-        savePosts();
-        renderPosts();
+        // 获取用户标识（使用localStorage存储）
+        let userId = localStorage.getItem('treeholeUserId');
+        if (!userId) {
+            userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('treeholeUserId', userId);
+        }
+        
+        // 检查是否已经点过赞
+        if (!post.likedBy) {
+            post.likedBy = [];
+        }
+        
+        if (!post.likedBy.includes(userId)) {
+            post.likedBy.push(userId);
+            post.likes++;
+            savePosts();
+            renderPosts();
+        } else {
+            alert('你已经点过赞了');
+        }
     }
 }
 
@@ -256,6 +295,37 @@ function importData(e) {
             }
         };
         reader.readAsText(file);
+    }
+}
+
+// 添加评论
+function addComment(postId) {
+    const commentInput = document.querySelector(`.comment-input[data-post-id="${postId}"]`);
+    const commentText = commentInput.value.trim();
+    
+    if (!commentText) {
+        alert('请输入评论内容');
+        return;
+    }
+    
+    const post = posts.find(p => p.id === postId);
+    if (post) {
+        if (!post.comments) {
+            post.comments = [];
+        }
+        
+        const newComment = {
+            id: Date.now(),
+            text: commentText,
+            timestamp: new Date().toLocaleString('zh-CN')
+        };
+        
+        post.comments.push(newComment);
+        savePosts();
+        renderPosts();
+        
+        // 清空评论输入框
+        commentInput.value = '';
     }
 }
 
