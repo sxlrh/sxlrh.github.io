@@ -387,25 +387,28 @@ function saveSettings() {
     // 更新本地存储中的用户信息
     saveUser();
     
-    // 更新用户列表中的信息
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    const userIndex = users.findIndex(u => u.id === currentUser.id);
-    if (userIndex !== -1) {
-        users[userIndex] = currentUser;
-        localStorage.setItem('treeholeUsers', JSON.stringify(users));
-    }
-    
-    // 更新界面显示
-    updateUserInfo();
-    
-    // 隐藏模态框
-    document.getElementById('settings-modal').style.display = 'none';
-    
-    showToast('设置保存成功');
-    
-    // 重新渲染帖子，更新用户信息
-    renderPosts();
-    showRanking('likes');
+    // 从公共存储加载用户数据
+    database.ref('users').once('value', (snapshot) => {
+        const users = snapshot.val() || {};
+        
+        // 更新用户信息
+        users[currentUser.id] = currentUser;
+        
+        // 保存到公共存储
+        database.ref('users').set(users);
+        
+        // 更新界面显示
+        updateUserInfo();
+        
+        // 隐藏模态框
+        document.getElementById('settings-modal').style.display = 'none';
+        
+        showToast('设置保存成功');
+        
+        // 重新渲染帖子，更新用户信息
+        renderPosts();
+        showRanking('likes');
+    });
 }
 
 // 切换图片放大缩小
@@ -624,38 +627,40 @@ function addFriend() {
         return;
     }
     
-    // 加载所有用户数据
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    
-    // 查找用户（同时支持用户名和ID）
-    const user = users.find(u => (u.username === input || u.id === input) && u.id !== currentUser.id);
-    
-    if (!user) {
-        showToast('未找到该用户');
-        return;
-    }
-    
-    // 从Firebase加载好友数据
-    database.ref('friends').once('value', (friendsSnapshot) => {
-        const friendsData = friendsSnapshot.val() || {};
-        const userFriends = friendsData[currentUser.id] || [];
+    // 从公共存储加载所有用户数据
+    database.ref('users').once('value', (usersSnapshot) => {
+        const users = usersSnapshot.val() || {};
         
-        // 检查是否已经是好友
-        if (userFriends.includes(user.id)) {
-            showToast('已经是好友了');
+        // 查找用户（同时支持用户名和ID）
+        const user = Object.values(users).find(u => (u.username === input || u.id === input) && u.id !== currentUser.id);
+        
+        if (!user) {
+            showToast('未找到该用户');
             return;
         }
         
-        // 添加好友
-        userFriends.push(user.id);
-        friendsData[currentUser.id] = userFriends;
-        
-        // 保存到Firebase
-        database.ref('friends').set(friendsData);
-        
-        showToast('添加好友成功');
-        document.getElementById('add-friend-username').value = '';
-        loadFriends();
+        // 从公共存储加载好友数据
+        database.ref('friends').once('value', (friendsSnapshot) => {
+            const friendsData = friendsSnapshot.val() || {};
+            const userFriends = friendsData[currentUser.id] || [];
+            
+            // 检查是否已经是好友
+            if (userFriends.includes(user.id)) {
+                showToast('已经是好友了');
+                return;
+            }
+            
+            // 添加好友
+            userFriends.push(user.id);
+            friendsData[currentUser.id] = userFriends;
+            
+            // 保存到公共存储
+            database.ref('friends').set(friendsData);
+            
+            showToast('添加好友成功');
+            document.getElementById('add-friend-username').value = '';
+            loadFriends();
+        });
     });
 }
 
@@ -683,7 +688,7 @@ function removeFriend(friendId) {
 
 // 获取好友列表
 function getFriends() {
-    // 从Firebase加载好友数据
+    // 从公共存储加载好友数据
     let friends = [];
     database.ref('friends').once('value', (snapshot) => {
         const friendsData = snapshot.val() || {};
@@ -736,46 +741,51 @@ function searchFriends(keyword) {
     const friendsContainer = document.getElementById('friends-container');
     friendsContainer.innerHTML = '';
     
-    // 从本地存储加载好友数据
-    const friends = getFriends();
-    
-    if (friends.length === 0) {
-        friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
-        return;
-    }
-    
-    // 加载所有用户数据
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    
-    // 过滤好友
-    const filteredFriends = friends.filter(friendId => {
-        const friend = users.find(u => u.id === friendId);
-        return friend && (friend.username.toLowerCase().includes(keyword.toLowerCase()) || friend.id.includes(keyword));
-    });
-    
-    if (filteredFriends.length === 0) {
-        friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">未找到匹配的好友</p>';
-        return;
-    }
-    
-    filteredFriends.forEach(friendId => {
-        const friend = users.find(u => u.id === friendId);
-        if (friend) {
-            const friendElement = document.createElement('div');
-            friendElement.className = 'friend-item';
-            friendElement.innerHTML = `
-                <img src="${friend.avatar}" alt="${friend.username}">
-                <div class="friend-item-info">
-                    <div class="friend-item-name">${friend.username}</div>
-                    <div style="font-size: 0.8rem; color: #999;">ID: ${friend.id}</div>
-                </div>
-                <div class="friend-item-actions">
-                    <button class="upload-btn" onclick="startChat(${friend.id})" style="padding: 5px 10px;">聊天</button>
-                    <button class="upload-btn" onclick="removeFriend(${friend.id})" style="padding: 5px 10px;">删除</button>
-                </div>
-            `;
-            friendsContainer.appendChild(friendElement);
+    // 从公共存储加载好友数据
+    database.ref('friends').once('value', (friendsSnapshot) => {
+        const friendsData = friendsSnapshot.val() || {};
+        const friends = friendsData[currentUser.id] || [];
+        
+        if (friends.length === 0) {
+            friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
+            return;
         }
+        
+        // 从公共存储加载所有用户数据
+        database.ref('users').once('value', (usersSnapshot) => {
+            const users = usersSnapshot.val() || {};
+            
+            // 过滤好友
+            const filteredFriends = friends.filter(friendId => {
+                const friend = users[friendId];
+                return friend && (friend.username.toLowerCase().includes(keyword.toLowerCase()) || friend.id.includes(keyword));
+            });
+            
+            if (filteredFriends.length === 0) {
+                friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">未找到匹配的好友</p>';
+                return;
+            }
+            
+            filteredFriends.forEach(friendId => {
+                const friend = users[friendId];
+                if (friend) {
+                    const friendElement = document.createElement('div');
+                    friendElement.className = 'friend-item';
+                    friendElement.innerHTML = `
+                        <img src="${friend.avatar}" alt="${friend.username}">
+                        <div class="friend-item-info">
+                            <div class="friend-item-name">${friend.username}</div>
+                            <div style="font-size: 0.8rem; color: #999;">ID: ${friend.id}</div>
+                        </div>
+                        <div class="friend-item-actions">
+                            <button class="upload-btn" onclick="startChat('${friend.id}')" style="padding: 5px 10px;">聊天</button>
+                            <button class="upload-btn" onclick="removeFriend('${friend.id}')" style="padding: 5px 10px;">删除</button>
+                        </div>
+                    `;
+                    friendsContainer.appendChild(friendElement);
+                }
+            });
+        });
     });
 }
 
