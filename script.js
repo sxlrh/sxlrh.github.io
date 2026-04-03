@@ -30,6 +30,9 @@ const database = {
                 // 使用公共存储键，确保所有用户都能看到相同的内容
                 localStorage.setItem('treehole_public_' + path, JSON.stringify(data));
                 console.log('数据保存到公共存储成功');
+            },
+            child: function(childPath) {
+                return this;
             }
         };
     }
