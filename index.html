@@ -3,65 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="心灵树洞 - 一个温暖的分享平台，在这里你可以倾诉一切">
+    <meta name="keywords" content="心灵树洞,分享,社交,倾诉">
+    <meta property="og:title" content="心灵树洞 - 分享你的故事">
+    <meta property="og:description" content="在这里，你可以倾诉一切">
+    <meta property="og:type" content="website">
+    <meta name="theme-color" content="#667eea">
     <title>心灵树洞 - 分享你的故事</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <!-- 加载遮罩样式 -->
-    <style>
-        #loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.95);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            flex-direction: column;
-            gap: 20px;
-        }
-        #loading-overlay .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        #loading-overlay .loading-text {
-            color: #667eea;
-            font-size: 1rem;
-            font-weight: 500;
-        }
-        .toast {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            z-index: 10000;
-            opacity: 0;
-            transform: translateX(100%);
-            transition: all 0.3s ease;
-        }
-        .toast.show {
-            opacity: 1;
-            transform: translateX(0);
-        }
-        .toast-success { background: #28a745; }
-        .toast-error { background: #dc3545; }
-        .toast-info { background: #17a2b8; }
-    </style>
+    <!-- PWA 支持 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
     <!-- 加载遮罩 -->
@@ -69,6 +24,11 @@
         <div class="spinner"></div>
         <div class="loading-text">加载中...</div>
     </div>
+
+    <!-- 夜间模式切换按钮 -->
+    <button class="theme-toggle" id="theme-toggle" title="切换主题">
+        <i class="fas fa-moon"></i>
+    </button>
 
     <header>
         <div class="container">
@@ -218,6 +178,12 @@
 
     <main>
         <div class="container">
+            <!-- 下拉刷新区域 -->
+            <div class="pull-refresh" id="pull-refresh">
+                <div class="pull-refresh-spinner"></div>
+                <div>下拉刷新</div>
+            </div>
+
             <!-- 发布区域 -->
             <section class="post-section">
                 <div class="post-card">
@@ -225,8 +191,9 @@
                         <h2>分享你的故事</h2>
                     </div>
                     <div class="post-content">
-                        <textarea id="post-text" placeholder="在这里写下你的想法..."></textarea>
+                        <textarea id="post-text" placeholder="在这里写下你的想法...&#10;&#10;💡 小提示：&#10;• 用 #话题 创建话题标签&#10;• 用 @用户名 提及好友"></textarea>
                         <div class="post-actions">
+                            <button class="emoji-picker-btn" id="emoji-btn">😊</button>
                             <div class="file-upload">
                                 <label for="image-upload" class="upload-btn">
                                     <i class="fas fa-image"></i> 图片
@@ -246,6 +213,26 @@
                             </div>
                             <button id="post-button" class="post-btn">发布</button>
                         </div>
+                        
+                        <!-- 表情选择器 -->
+                        <div class="emoji-picker" id="emoji-picker">
+                            <div class="emoji-grid">
+                                <span class="emoji-item">😀</span><span class="emoji-item">😂</span>
+                                <span class="emoji-item">😍</span><span class="emoji-item">🥰</span>
+                                <span class="emoji-item">😊</span><span class="emoji-item">😎</span>
+                                <span class="emoji-item">🤔</span><span class="emoji-item">😅</span>
+                                <span class="emoji-item">😢</span><span class="emoji-item">😭</span>
+                                <span class="emoji-item">😤</span><span class="emoji-item">🥺</span>
+                                <span class="emoji-item">👍</span><span class="emoji-item">👏</span>
+                                <span class="emoji-item">❤️</span><span class="emoji-item">💔</span>
+                                <span class="emoji-item">🔥</span><span class="emoji-item">⭐</span>
+                                <span class="emoji-item">🎉</span><span class="emoji-item">💪</span>
+                                <span class="emoji-item">🙏</span><span class="emoji-item">✨</span>
+                                <span class="emoji-item">🌈</span><span class="emoji-item">☀️</span>
+                                <span class="emoji-item">🌙</span><span class="emoji-item">🌸</span>
+                                <span class="emoji-item">🍀</span><span class="emoji-item">🎁</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -254,9 +241,9 @@
             <section class="content-section">
                 <h2>排行榜</h2>
                 <div class="ranking-tabs">
-                    <button class="ranking-tab active" onclick="showRanking('likes')">点赞榜</button>
-                    <button class="ranking-tab" onclick="showRanking('views')">浏览榜</button>
-                    <button class="ranking-tab" onclick="showRanking('comments')">评论榜</button>
+                    <button class="ranking-tab active" onclick="showRanking('likes')">🔥 点赞榜</button>
+                    <button class="ranking-tab" onclick="showRanking('views')">👁️ 浏览榜</button>
+                    <button class="ranking-tab" onclick="showRanking('comments')">💬 评论榜</button>
                 </div>
                 <div id="ranking-container" class="posts-grid"></div>
             </section>
@@ -271,7 +258,29 @@
                         </button>
                     </div>
                 </div>
+                
+                <!-- 骨架屏占位 -->
+                <div id="skeleton-container" class="posts-grid">
+                    <div class="skeleton-card">
+                        <div class="skeleton skeleton-avatar"></div>
+                        <div class="skeleton skeleton-title"></div>
+                        <div class="skeleton skeleton-text"></div>
+                        <div class="skeleton skeleton-text"></div>
+                    </div>
+                    <div class="skeleton-card">
+                        <div class="skeleton skeleton-avatar"></div>
+                        <div class="skeleton skeleton-title"></div>
+                        <div class="skeleton skeleton-text"></div>
+                        <div class="skeleton skeleton-text"></div>
+                    </div>
+                </div>
+                
                 <div id="posts-container" class="posts-grid"></div>
+                
+                <!-- 加载更多按钮 -->
+                <button class="load-more-btn" id="load-more-btn" style="display: none;">
+                    <i class="fas fa-chevron-down"></i> 加载更多
+                </button>
             </section>
         </div>
     </main>
@@ -279,9 +288,61 @@
     <footer>
         <div class="container">
             <p>&copy; 2026 心灵树洞 | 在这里，你可以自由表达</p>
+            <p style="font-size: 0.8rem; margin-top: 10px; opacity: 0.6;">
+                Made with ❤️ by 琳琳 | Powered by Supabase
+            </p>
         </div>
     </footer>
 
     <script type="module" src="script.js"></script>
+    
+    <!-- 夜间模式脚本 -->
+    <script>
+        // 夜间模式切换
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.documentElement;
+        
+        // 检查本地存储的主题设置
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        body.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+        
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+        
+        function updateThemeIcon(theme) {
+            const icon = themeToggle.querySelector('i');
+            icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+        
+        // 表情选择器
+        const emojiBtn = document.getElementById('emoji-btn');
+        const emojiPicker = document.getElementById('emoji-picker');
+        const postText = document.getElementById('post-text');
+        
+        emojiBtn.addEventListener('click', () => {
+            emojiPicker.classList.toggle('show');
+        });
+        
+        document.querySelectorAll('.emoji-item').forEach(item => {
+            item.addEventListener('click', () => {
+                postText.value += item.textContent;
+                postText.focus();
+                emojiPicker.classList.remove('show');
+            });
+        });
+        
+        // 点击其他地方关闭表情选择器
+        document.addEventListener('click', (e) => {
+            if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+                emojiPicker.classList.remove('show');
+            }
+        });
+    </script>
 </body>
 </html>

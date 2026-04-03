@@ -1023,5 +1023,271 @@ window.toggleImageZoom = function(img) {
     }
 };
 
+// ==================== 话题标签解析 ====================
+function parseContent(text) {
+    if (!text) return '';
+    
+    // 转义 HTML
+    let result = escapeHtml(text);
+    
+    // 解析话题标签 #话题
+    result = result.replace(/#(\S+)/g, '<span class="topic-tag" onclick="searchTopic(\'$1\')">#$1</span>');
+    
+    // 解析 @提及
+    result = result.replace(/@(\S+)/g, '<span class="mention-tag" onclick="mentionUser(\'$1\')">@$1</span>');
+    
+    // 解析链接
+    result = result.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#667eea;">$1</a>');
+    
+    return result;
+}
+
+// 搜索话题
+window.searchTopic = function(topic) {
+    showToast(`搜索话题: #${topic}`, 'info');
+    // TODO: 实现话题搜索
+};
+
+// 提及用户
+window.mentionUser = function(username) {
+    showToast(`提及用户: @${username}`, 'info');
+    // TODO: 实现用户提及
+};
+
+// ==================== 无限滚动 ====================
+let currentPage = 0;
+const pageSize = 10;
+let isLoadingMore = false;
+let hasMorePosts = true;
+
+async function loadMorePosts() {
+    if (isLoadingMore || !hasMorePosts) return;
+    
+    isLoadingMore = true;
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 加载中...';
+        loadMoreBtn.disabled = true;
+    }
+    
+    try {
+        const { data, error } = await supabase
+            .from('posts')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .range(currentPage * pageSize + pageSize, (currentPage + 1) * pageSize + pageSize);
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            currentPage++;
+            
+            // 获取点赞和评论
+            const newPosts = await Promise.all(data.map(async (post) => {
+                const [likesRes, commentsRes] = await Promise.all([
+                    supabase.from('likes').select('id', { count: 'exact' }).eq('post_id', post.id),
+                    supabase.from('comments').select('*').eq('post_id', post.id)
+                ]);
+                
+                let liked = false;
+                if (currentUser) {
+                    const { data: likeData } = await supabase
+                        .from('likes')
+                        .select('id')
+                        .eq('post_id', post.id)
+                        .eq('user_id', currentUser.id)
+                        .single();
+                    liked = !!likeData;
+                }
+                
+                return {
+                    ...post,
+                    likes: likesRes.count || 0,
+                    liked,
+                    comments: commentsRes.data || []
+                };
+            }));
+            
+            posts = [...posts, ...newPosts];
+            
+            // 渲染新帖子
+            const container = document.getElementById('posts-container');
+            newPosts.forEach(post => {
+                container.appendChild(createPostElement(post));
+            });
+            
+            if (data.length < pageSize) {
+                hasMorePosts = false;
+            }
+        } else {
+            hasMorePosts = false;
+        }
+        
+    } catch (error) {
+        console.error('加载更多失败:', error);
+    } finally {
+        isLoadingMore = false;
+        if (loadMoreBtn && hasMorePosts) {
+            loadMoreBtn.innerHTML = '<i class="fas fa-chevron-down"></i> 加载更多';
+            loadMoreBtn.disabled = false;
+        } else if (loadMoreBtn) {
+            loadMoreBtn.innerHTML = '没有更多了';
+            loadMoreBtn.disabled = true;
+        }
+    }
+}
+
+// 滚动监听
+function setupInfiniteScroll() {
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', loadMorePosts);
+        loadMoreBtn.style.display = 'block';
+    }
+    
+    // 滚动到底部自动加载
+    window.addEventListener('scroll', () => {
+        if (isLoadingMore || !hasMorePosts) return;
+        
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const scrollHeight = document.documentElement.scrollHeight;
+        const clientHeight = document.documentElement.clientHeight;
+        
+        if (scrollTop + clientHeight >= scrollHeight - 200) {
+            loadMorePosts();
+        }
+    });
+}
+
+// ==================== 下拉刷新 ====================
+let touchStartY = 0;
+let isPulling = false;
+
+function setupPullRefresh() {
+    const container = document.body;
+    
+    container.addEventListener('touchstart', (e) => {
+        if (window.scrollY === 0) {
+            touchStartY = e.touches[0].clientY;
+            isPulling = true;
+        }
+    });
+    
+    container.addEventListener('touchmove', (e) => {
+        if (!isPulling) return;
+        
+        const touchY = e.touches[0].clientY;
+        const diff = touchY - touchStartY;
+        
+        if (diff > 100 && window.scrollY === 0) {
+            const pullRefresh = document.getElementById('pull-refresh');
+            if (pullRefresh) {
+                pullRefresh.classList.add('active');
+            }
+        }
+    });
+    
+    container.addEventListener('touchend', () => {
+        const pullRefresh = document.getElementById('pull-refresh');
+        if (pullRefresh && pullRefresh.classList.contains('active')) {
+            // 刷新
+            location.reload();
+        }
+        isPulling = false;
+        if (pullRefresh) {
+            pullRefresh.classList.remove('active');
+        }
+    });
+}
+
+// ==================== 修改 createPostElement 使用话题解析 ====================
+const originalCreatePostElement = createPostElement;
+createPostElement = function(post) {
+    const div = document.createElement('div');
+    div.className = 'post-item';
+    div.dataset.id = post.id;
+    
+    // 浏览量计数
+    if (!viewedPosts.has(post.id)) {
+        viewedPosts.add(post.id);
+        incrementViewCount(post.id);
+    }
+    
+    let media = '';
+    if (post.image_url) {
+        media = `<div class="post-item-media"><img src="${post.image_url}" alt="图片" onclick="toggleImageZoom(this)" loading="lazy"></div>`;
+    } else if (post.video_url) {
+        media = `<div class="post-item-media"><video controls preload="metadata"><source src="${post.video_url}"></video></div>`;
+    } else if (post.voice_url) {
+        media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice_url}"></audio></div>`;
+    }
+    
+    const userHtml = `<div class="post-user" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
+        <span style="font-weight:600;color:#667eea;">${post.username}</span>
+    </div>`;
+    
+    let commentsHtml = '';
+    if (post.comments && post.comments.length > 0) {
+        commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
+        post.comments.slice(-5).forEach(c => {
+            commentsHtml += `<li class="comment-item">
+                <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+                    <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
+                    <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
+                </div>
+                <span class="comment-text">${parseContent(c.content)}</span>
+                <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
+            </li>`;
+        });
+        commentsHtml += '</ul></div>';
+    }
+    
+    // 使用话题解析
+    const parsedContent = parseContent(post.content);
+    
+    div.innerHTML = `
+        ${userHtml}
+        <div class="post-item-content">${parsedContent}</div>
+        ${media}
+        <div class="post-item-meta">
+            <span class="post-time">${new Date(post.created_at).toLocaleString('zh-CN')} · ${post.views || 0} 浏览</span>
+            <div class="post-item-actions">
+                <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" data-id="${post.id}">
+                    <i class="fas fa-heart"></i> ${post.likes}
+                </button>
+                <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
+            </div>
+        </div>
+        ${commentsHtml}
+        <div class="comment-form">
+            <input type="text" class="comment-input" placeholder="写下你的评论..." data-id="${post.id}">
+            <button class="comment-btn" data-id="${post.id}"><i class="fas fa-paper-plane"></i></button>
+        </div>`;
+    
+    div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
+    div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
+    div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
+    
+    return div;
+};
+
+// ==================== 隐藏骨架屏 ====================
+function hideSkeleton() {
+    const skeletonContainer = document.getElementById('skeleton-container');
+    if (skeletonContainer) {
+        skeletonContainer.style.display = 'none';
+    }
+}
+
 // ==================== 启动 ====================
-window.addEventListener('DOMContentLoaded', init);
+window.addEventListener('DOMContentLoaded', () => {
+    init();
+    
+    // 延迟设置无限滚动和下拉刷新
+    setTimeout(() => {
+        setupInfiniteScroll();
+        setupPullRefresh();
+        hideSkeleton();
+    }, 1000);
+});
