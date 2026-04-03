@@ -16,7 +16,7 @@ const database = {
     ref: function(path) {
         return {
             once: function(event, callback) {
-                // 使用公共存储键，确保所有用户都能看到相同的内容
+                // 从本地存储加载数据
                 const data = localStorage.getItem('treehole_' + path);
                 callback({
                     val: function() {
@@ -25,8 +25,9 @@ const database = {
                 });
             },
             set: function(data) {
-                // 使用公共存储键，确保所有用户都能看到相同的内容
+                // 保存数据到本地存储
                 localStorage.setItem('treehole_' + path, JSON.stringify(data));
+                console.log('数据保存到本地存储成功');
             }
         };
     }
