@@ -606,6 +606,12 @@ async function handlePost() {
         return;
     }
     
+    // 敏感词检测
+    if (containsSensitiveWords(text)) {
+        showToast('内容包含敏感词，请修改后再发布', 'error');
+        return;
+    }
+    
     showLoading(true);
     
     try {
@@ -626,6 +632,9 @@ async function handlePost() {
         
         const postId = generateId();
         
+        // 过滤敏感词后再存储
+        const filteredText = filterSensitiveWords(text);
+        
         const { error } = await supabase
             .from('posts')
             .insert({
@@ -633,7 +642,7 @@ async function handlePost() {
                 user_id: currentUser.id,
                 username: currentUser.username,
                 user_avatar: currentUser.avatar,
-                content: text,
+                content: filteredText,
                 image_url: imageUrl,
                 video_url: videoUrl,
                 voice_url: voiceUrl
@@ -641,8 +650,9 @@ async function handlePost() {
         
         if (error) throw error;
         
-        // 清空表单
+        // 清空表单和草稿
         document.getElementById('post-text').value = '';
+        localStorage.removeItem('treehole_draft');
         currentImage = null;
         currentVideo = null;
         currentVoice = null;
@@ -1222,7 +1232,8 @@ createPostElement = function(post) {
         media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice_url}"></audio></div>`;
     }
     
-    const userHtml = `<div class="post-user" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    // 用户信息（可点击进入主页）
+    const userHtml = `<div class="post-user" onclick="openUserProfile('${post.user_id}')" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;">
         <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
         <span style="font-weight:600;color:#667eea;">${post.username}</span>
     </div>`;
@@ -1232,7 +1243,7 @@ createPostElement = function(post) {
         commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
         post.comments.slice(-5).forEach(c => {
             commentsHtml += `<li class="comment-item">
-                <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+                <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;cursor:pointer;" onclick="openUserProfile('${c.user_id}')">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
                 </div>
@@ -1243,8 +1254,9 @@ createPostElement = function(post) {
         commentsHtml += '</ul></div>';
     }
     
-    // 使用话题解析
-    const parsedContent = parseContent(post.content);
+    // 使用话题解析和敏感词过滤
+    const filteredContent = filterSensitiveWords(post.content);
+    const parsedContent = parseContent(filteredContent);
     
     div.innerHTML = `
         ${userHtml}
@@ -1255,6 +1267,9 @@ createPostElement = function(post) {
             <div class="post-item-actions">
                 <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" data-id="${post.id}">
                     <i class="fas fa-heart"></i> ${post.likes}
+                </button>
+                <button class="action-btn share-btn" data-id="${post.id}" onclick="sharePost('${post.id}')">
+                    <i class="fas fa-share-alt"></i>
                 </button>
                 <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
             </div>
@@ -1690,6 +1705,9 @@ window.addEventListener('DOMContentLoaded', () => {
         setupSearch();
         setupHotTopics();
         setupNotifications();
+        setupUserProfile();
+        setupShare();
+        setupKeyboardShortcuts();
     }, 1000);
 });
 
@@ -1700,3 +1718,404 @@ document.addEventListener('keydown', (e) => {
         openSearchModal();
     }
 });
+
+// ==================== 敏感词过滤 ====================
+const sensitiveWords = [
+    '傻逼', '煞笔', '沙比', 'sb', 'SB', 'Sb', 'sB',
+    '操你', '草你', '艹你', '操蛋',
+    '妈的', '他妈', 'TMD', 'tmd',
+    '垃圾', '废物', '滚蛋', '滚开',
+    '去死', '死全家', '不得好死'
+];
+
+function filterSensitiveWords(text) {
+    if (!text) return text;
+    
+    let filtered = text;
+    sensitiveWords.forEach(word => {
+        const regex = new RegExp(word, 'gi');
+        filtered = filtered.replace(regex, '*'.repeat(word.length));
+    });
+    
+    return filtered;
+}
+
+// 检查是否包含敏感词
+function containsSensitiveWords(text) {
+    if (!text) return false;
+    
+    const lowerText = text.toLowerCase();
+    return sensitiveWords.some(word => lowerText.includes(word.toLowerCase()));
+}
+
+// ==================== 用户个人主页 ====================
+let userProfileModal = null;
+
+function setupUserProfile() {
+    // 创建用户主页模态框
+    userProfileModal = document.createElement('div');
+    userProfileModal.id = 'user-profile-modal';
+    userProfileModal.className = 'modal';
+    userProfileModal.innerHTML = `
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3 id="profile-username">用户主页</h3>
+                <span class="close-btn" onclick="closeUserProfile()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="profile-info" style="display:flex;align-items:center;gap:20px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #e0e0e0;">
+                    <img id="profile-avatar" src="" style="width:80px;height:80px;border-radius:50%;border:3px solid #667eea;">
+                    <div>
+                        <div id="profile-name" style="font-size:1.5rem;font-weight:bold;color:#333;"></div>
+                        <div id="profile-id" style="color:#999;font-size:0.9rem;margin-top:5px;"></div>
+                        <div id="profile-stats" style="display:flex;gap:20px;margin-top:10px;color:#666;">
+                            <span><strong id="profile-posts-count">0</strong> 帖子</span>
+                            <span><strong id="profile-likes-count">0</strong> 获赞</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="profile-tabs" style="display:flex;gap:10px;margin-bottom:20px;">
+                    <button class="profile-tab active" onclick="showProfileTab('posts')">发布的帖子</button>
+                    <button class="profile-tab" onclick="showProfileTab('likes')">点赞的帖子</button>
+                </div>
+                <div id="profile-posts" style="max-height: 400px; overflow-y: auto;"></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(userProfileModal);
+    
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .profile-tab {
+            padding: 8px 20px;
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .profile-tab:hover {
+            border-color: #667eea;
+        }
+        .profile-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+        .profile-post-item {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .profile-post-item:hover {
+            background: #f8f9fa;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+window.openUserProfile = async function(userId) {
+    if (!userProfileModal) setupUserProfile();
+    
+    // 获取用户信息
+    const { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
+    if (!user) {
+        showToast('用户不存在', 'error');
+        return;
+    }
+    
+    // 显示用户信息
+    document.getElementById('profile-avatar').src = user.avatar;
+    document.getElementById('profile-name').textContent = user.username;
+    document.getElementById('profile-id').textContent = `ID: ${user.id}`;
+    
+    // 获取用户帖子数
+    const { count: postsCount } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact' })
+        .eq('user_id', userId);
+    
+    document.getElementById('profile-posts-count').textContent = postsCount || 0;
+    
+    // 获取用户获赞数
+    const { data: userPosts } = await supabase
+        .from('posts')
+        .select('id')
+        .eq('user_id', userId);
+    
+    let totalLikes = 0;
+    if (userPosts && userPosts.length > 0) {
+        const postIds = userPosts.map(p => p.id);
+        const { data: likes } = await supabase
+            .from('likes')
+            .select('id')
+            .in('post_id', postIds);
+        totalLikes = likes?.length || 0;
+    }
+    document.getElementById('profile-likes-count').textContent = totalLikes;
+    
+    // 加载用户帖子
+    loadProfilePosts(userId);
+    
+    userProfileModal.style.display = 'block';
+};
+
+window.closeUserProfile = function() {
+    if (userProfileModal) {
+        userProfileModal.style.display = 'none';
+    }
+};
+
+let currentProfileUserId = null;
+
+window.showProfileTab = function(tab) {
+    document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    if (tab === 'posts') {
+        loadProfilePosts(currentProfileUserId);
+    } else if (tab === 'likes') {
+        loadProfileLikes(currentProfileUserId);
+    }
+};
+
+async function loadProfilePosts(userId) {
+    currentProfileUserId = userId;
+    const container = document.getElementById('profile-posts');
+    container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载中...</p>';
+    
+    try {
+        const { data } = await supabase
+            .from('posts')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(20);
+        
+        container.innerHTML = '';
+        
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无帖子</p>';
+            return;
+        }
+        
+        data.forEach(post => {
+            const div = document.createElement('div');
+            div.className = 'profile-post-item';
+            div.innerHTML = `
+                <div style="color:#333;margin-bottom:8px;">${escapeHtml(post.content || '').substring(0, 150)}${post.content?.length > 150 ? '...' : ''}</div>
+                <div style="color:#999;font-size:0.85rem;">${new Date(post.created_at).toLocaleString('zh-CN')} · ${post.views || 0} 浏览</div>
+            `;
+            container.appendChild(div);
+        });
+        
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
+    }
+}
+
+async function loadProfileLikes(userId) {
+    const container = document.getElementById('profile-posts');
+    container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载中...</p>';
+    
+    try {
+        // 获取用户点赞的帖子
+        const { data: likes } = await supabase
+            .from('likes')
+            .select('post_id')
+            .eq('user_id', userId);
+        
+        if (!likes || likes.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无点赞的帖子</p>';
+            return;
+        }
+        
+        const postIds = likes.map(l => l.post_id);
+        const { data } = await supabase
+            .from('posts')
+            .select('*')
+            .in('id', postIds)
+            .order('created_at', { ascending: false });
+        
+        container.innerHTML = '';
+        
+        data?.forEach(post => {
+            const div = document.createElement('div');
+            div.className = 'profile-post-item';
+            div.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <img src="${post.user_avatar}" style="width:25px;height:25px;border-radius:50%;">
+                    <span style="color:#667eea;font-weight:600;">${post.username}</span>
+                </div>
+                <div style="color:#333;">${escapeHtml(post.content || '').substring(0, 150)}${post.content?.length > 150 ? '...' : ''}</div>
+                <div style="color:#999;font-size:0.85rem;margin-top:5px;">${new Date(post.created_at).toLocaleString('zh-CN')}</div>
+            `;
+            container.appendChild(div);
+        });
+        
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
+    }
+}
+
+// ==================== 帖子分享 ====================
+function setupShare() {
+    // 添加分享样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .share-menu {
+            position: absolute;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            padding: 10px;
+            z-index: 100;
+            display: none;
+        }
+        .share-menu.show {
+            display: block;
+        }
+        .share-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+        .share-menu-item:hover {
+            background: #f8f9fa;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+window.sharePost = function(postId) {
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    const shareUrl = `${window.location.origin}${window.location.pathname}#post-${postId}`;
+    
+    // 创建分享菜单
+    const menu = document.createElement('div');
+    menu.className = 'share-menu show';
+    menu.innerHTML = `
+        <div class="share-menu-item" onclick="copyShareLink('${shareUrl}')">
+            <i class="fas fa-link"></i> 复制链接
+        </div>
+        <div class="share-menu-item" onclick="shareToWeibo('${encodeURIComponent(post.content || '')}', '${shareUrl}')">
+            <i class="fab fa-weibo"></i> 分享到微博
+        </div>
+        <div class="share-menu-item" onclick="shareToTwitter('${encodeURIComponent(post.content || '')}', '${shareUrl}')">
+            <i class="fab fa-twitter"></i> 分享到 Twitter
+        </div>
+    `;
+    
+    // 定位菜单
+    const rect = event.target.getBoundingClientRect();
+    menu.style.top = `${rect.bottom + 5}px`;
+    menu.style.left = `${rect.left}px`;
+    
+    document.body.appendChild(menu);
+    
+    // 点击其他地方关闭
+    const closeMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 100);
+};
+
+window.copyShareLink = function(url) {
+    navigator.clipboard.writeText(url).then(() => {
+        showToast('链接已复制', 'success');
+    }).catch(() => {
+        // 降级方案
+        const input = document.createElement('input');
+        input.value = url;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+        showToast('链接已复制', 'success');
+    });
+};
+
+window.shareToWeibo = function(text, url) {
+    window.open(`https://service.weibo.com/share/share.php?url=${encodeURIComponent(url)}&title=${text}`, '_blank');
+};
+
+window.shareToTwitter = function(text, url) {
+    window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${text}`, '_blank');
+};
+
+// ==================== 快捷键支持 ====================
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Ctrl/Cmd + Enter: 发布帖子
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            const postBtn = document.getElementById('post-button');
+            if (postBtn && !postBtn.disabled) {
+                postBtn.click();
+            }
+        }
+        
+        // Ctrl/Cmd + Shift + K: 打开搜索
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'K') {
+            e.preventDefault();
+            openSearchModal();
+        }
+        
+        // Ctrl/Cmd + /: 切换主题
+        if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+            e.preventDefault();
+            document.getElementById('theme-toggle')?.click();
+        }
+        
+        // Esc: 关闭所有模态框
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
+            if (imageViewer) closeImageViewer();
+        }
+    });
+    
+    // 添加快捷键提示
+    const shortcutsHint = document.createElement('div');
+    shortcutsHint.innerHTML = `
+        <div style="position:fixed;bottom:90px;right:30px;background:var(--bg-secondary);padding:15px;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.1);font-size:0.85rem;color:var(--text-secondary);z-index:999;display:none;" id="shortcuts-hint">
+            <div style="font-weight:bold;margin-bottom:10px;color:var(--accent-color);">⌨️ 快捷键</div>
+            <div style="margin-bottom:5px;"><kbd style="background:#f0f0f0;padding:2px 6px;border-radius:3px;">Ctrl</kbd> + <kbd style="background:#f0f0f0;padding:2px 6px;border-radius:3px;">Enter</kbd> 发布帖子</div>
+            <div style="margin-bottom:5px;"><kbd style="background:#f0f0f0;padding:2px 6px;border-radius:3px;">Ctrl</kbd> + <kbd style="background:#f0f0f0;padding:2px 6px;border-radius:3px;">K</kbd> 搜索</div>
+            <div style="margin-bottom:5px;"><kbd style="background:#f0f0f0;padding:2px 6px;border-radius:3px;">Ctrl</kbd> + <kbd style="background:#f0f0f0;padding:2px 6px;border-radius:3px;">/</kbd> 切换主题</div>
+            <div><kbd style="background:#f0f0f0;padding:2px 6px;border-radius:3px;">Esc</kbd> 关闭弹窗</div>
+        </div>
+    `;
+    document.body.appendChild(shortcutsHint);
+    
+    // 鼠标悬停在主题按钮上显示快捷键提示
+    const themeToggle = document.getElementById('theme-toggle');
+    const hint = document.getElementById('shortcuts-hint');
+    
+    themeToggle?.addEventListener('mouseenter', () => {
+        hint.style.display = 'block';
+    });
+    
+    themeToggle?.addEventListener('mouseleave', () => {
+        setTimeout(() => {
+            if (!hint.matches(':hover')) {
+                hint.style.display = 'none';
+            }
+        }, 500);
+    });
+    
+    hint.addEventListener('mouseleave', () => {
+        hint.style.display = 'none';
+    });
+}
