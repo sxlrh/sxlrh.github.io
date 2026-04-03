@@ -13,7 +13,7 @@ let updateInterval = null;
 
 // Firebase配置
 const firebaseConfig = {
-    apiKey: "AIzaSyD7W0wV7y2X4f2Z9vQ6X5q3X7y8z9vQ6X5",
+    apiKey: "AIzaSyC5gXl4yW6a7E1X4X4X4X4X4X4X4X4X4X4",
     authDomain: "treehole-website-12345.firebaseapp.com",
     databaseURL: "https://treehole-website-12345-default-rtdb.firebaseio.com",
     projectId: "treehole-website-12345",
@@ -23,10 +23,36 @@ const firebaseConfig = {
 };
 
 // 初始化Firebase
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
+let database = null;
+try {
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    database = firebase.database();
+    console.log('Firebase初始化成功');
+    showToast('Firebase连接成功');
+} catch (error) {
+    console.error('Firebase初始化失败:', error);
+    showToast('Firebase连接失败，使用本地存储');
+    // 回退到本地存储
+    database = {
+        ref: function(path) {
+            return {
+                once: function(event, callback) {
+                    const data = localStorage.getItem('firebase_' + path);
+                    callback({
+                        val: function() {
+                            return data ? JSON.parse(data) : null;
+                        }
+                    });
+                },
+                set: function(data) {
+                    localStorage.setItem('firebase_' + path, JSON.stringify(data));
+                }
+            };
+        }
+    };
 }
-const database = firebase.database();
 
 // 初始化
 function init() {
@@ -448,27 +474,37 @@ function startAutoUpdate() {
 
 // 检查更新
 function checkForUpdates() {
-    // 从Firebase加载最新的帖子
-    database.ref('posts').once('value', (snapshot) => {
-        const updatedPosts = snapshot.val() || {};
-        const updatedPostsArray = Object.values(updatedPosts);
-        
-        // 检查是否有新内容
-        if (updatedPostsArray.length !== posts.length) {
-            posts = updatedPostsArray;
-            renderPosts();
-            showToast('有新内容更新');
-        } else {
-            // 检查是否有内容变化
-            const currentPostsString = JSON.stringify(posts);
-            const updatedPostsString = JSON.stringify(updatedPostsArray);
-            if (currentPostsString !== updatedPostsString) {
-                posts = updatedPostsArray;
-                renderPosts();
-                showToast('内容已更新');
+    try {
+        // 从存储加载最新的帖子
+        database.ref('posts').once('value', (snapshot) => {
+            let updatedPosts = snapshot.val() || [];
+            
+            // 确保是数组
+            if (!Array.isArray(updatedPosts)) {
+                updatedPosts = Object.values(updatedPosts);
             }
-        }
-    });
+            
+            // 检查是否有新内容
+            if (updatedPosts.length !== posts.length) {
+                posts = updatedPosts;
+                renderPosts();
+                showToast('有新内容更新');
+                console.log('检测到新内容，当前帖子数:', posts.length);
+            } else {
+                // 检查是否有内容变化
+                const currentPostsString = JSON.stringify(posts);
+                const updatedPostsString = JSON.stringify(updatedPosts);
+                if (currentPostsString !== updatedPostsString) {
+                    posts = updatedPosts;
+                    renderPosts();
+                    showToast('内容已更新');
+                    console.log('检测到内容变化，已更新');
+                }
+            }
+        });
+    } catch (error) {
+        console.error('检查更新失败:', error);
+    }
 }
 
 // 停止自动更新
@@ -913,18 +949,23 @@ function handlePost() {
         }
     };
     
-    // 从Firebase加载最新的帖子（确保不会覆盖其他用户的帖子）
+    // 从存储加载最新的帖子（确保不会覆盖其他用户的帖子）
     database.ref('posts').once('value', (snapshot) => {
-        const latestPosts = snapshot.val() || {};
+        let latestPosts = snapshot.val() || [];
+        
+        // 确保是数组
+        if (!Array.isArray(latestPosts)) {
+            latestPosts = Object.values(latestPosts);
+        }
         
         // 添加新帖子
-        latestPosts[newPost.id] = newPost;
+        latestPosts.unshift(newPost);
         
-        // 保存到Firebase
+        // 保存到存储
         database.ref('posts').set(latestPosts);
         
         // 更新本地帖子数组
-        posts = Object.values(latestPosts);
+        posts = latestPosts;
         
         // 渲染帖子
         renderPosts();
@@ -939,6 +980,7 @@ function handlePost() {
         
         // 显示发布成功提示
         showToast('发布成功');
+        console.log('发布成功，当前帖子数:', posts.length);
     });
 }
 
@@ -1054,10 +1096,16 @@ function toggleLike(postId) {
         return;
     }
     
-    // 从Firebase加载最新的帖子
+    // 从存储加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
-        const latestPosts = snapshot.val() || {};
-        const post = latestPosts[postId];
+        let latestPosts = snapshot.val() || [];
+        
+        // 确保是数组
+        if (!Array.isArray(latestPosts)) {
+            latestPosts = Object.values(latestPosts);
+        }
+        
+        const post = latestPosts.find(p => p.id === postId);
         
         if (post) {
             // 检查是否已经点过赞
@@ -1069,12 +1117,11 @@ function toggleLike(postId) {
                 post.likedBy.push(currentUser.id);
                 post.likes++;
                 
-                // 保存到Firebase
-                latestPosts[postId] = post;
+                // 保存到存储
                 database.ref('posts').set(latestPosts);
                 
                 // 更新本地帖子数组
-                posts = Object.values(latestPosts);
+                posts = latestPosts;
                 
                 // 渲染帖子
                 renderPosts();
@@ -1087,6 +1134,7 @@ function toggleLike(postId) {
                 
                 // 显示点赞成功提示
                 showToast('点赞成功');
+                console.log('点赞成功，当前点赞数:', post.likes);
             } else {
                 showToast('你已经点过赞了');
             }
@@ -1103,10 +1151,16 @@ function deletePost(postId) {
         return;
     }
     
-    // 从Firebase加载最新的帖子
+    // 从存储加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
-        const latestPosts = snapshot.val() || {};
-        const post = latestPosts[postId];
+        let latestPosts = snapshot.val() || [];
+        
+        // 确保是数组
+        if (!Array.isArray(latestPosts)) {
+            latestPosts = Object.values(latestPosts);
+        }
+        
+        const post = latestPosts.find(p => p.id === postId);
         
         // 检查是否是帖子的作者
         if (!post || !post.user || post.user.id !== currentUser.id) {
@@ -1115,48 +1169,58 @@ function deletePost(postId) {
         }
         
         if (confirm('确定要删除这条分享吗？')) {
-            // 从对象中删除帖子
-            delete latestPosts[postId];
+            // 从数组中删除帖子
+            const updatedPosts = latestPosts.filter(p => p.id !== postId);
             
-            // 保存到Firebase
-            database.ref('posts').set(latestPosts);
+            // 保存到存储
+            database.ref('posts').set(updatedPosts);
             
             // 更新本地帖子数组
-            posts = Object.values(latestPosts);
+            posts = updatedPosts;
             
             // 渲染帖子
             renderPosts();
             
             // 显示删除成功提示
             showToast('删除成功');
+            console.log('删除成功，剩余帖子数:', posts.length);
         }
     });
 }
 
-// 保存帖子到Firebase
+// 保存帖子到存储
 function savePosts() {
-    // 将帖子数组转换为对象，使用帖子ID作为键
-    const postsObj = {};
-    posts.forEach(post => {
-        postsObj[post.id] = post;
-    });
-    database.ref('posts').set(postsObj);
+    // 直接保存帖子数组
+    database.ref('posts').set(posts);
+    console.log('保存帖子成功，当前帖子数:', posts.length);
 }
 
-// 从Firebase加载帖子
+// 从存储加载帖子
 function loadPosts() {
-    database.ref('posts').once('value', (snapshot) => {
-        const storedPosts = snapshot.val();
-        if (storedPosts) {
-            posts = Object.values(storedPosts);
-        } else {
-            // 初始化空帖子数组
-            posts = [];
-            database.ref('posts').set({});
-        }
-        // 渲染帖子
-        renderPosts();
-    });
+    try {
+        database.ref('posts').once('value', (snapshot) => {
+            const storedPosts = snapshot.val();
+            if (storedPosts) {
+                // 确保posts是数组
+                if (Array.isArray(storedPosts)) {
+                    posts = storedPosts;
+                } else {
+                    posts = Object.values(storedPosts);
+                }
+                console.log('加载到', posts.length, '个帖子');
+            } else {
+                // 初始化空帖子数组
+                posts = [];
+                database.ref('posts').set([]);
+                console.log('初始化空帖子数组');
+            }
+            // 渲染帖子
+            renderPosts();
+        });
+    } catch (error) {
+        console.error('加载帖子失败:', error);
+        showToast('加载帖子失败');
+    }
 }
 
 // 导出数据
@@ -1211,10 +1275,16 @@ function addComment(postId) {
         return;
     }
     
-    // 从Firebase加载最新的帖子
+    // 从存储加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
-        const latestPosts = snapshot.val() || {};
-        const post = latestPosts[postId];
+        let latestPosts = snapshot.val() || [];
+        
+        // 确保是数组
+        if (!Array.isArray(latestPosts)) {
+            latestPosts = Object.values(latestPosts);
+        }
+        
+        const post = latestPosts.find(p => p.id === postId);
         
         if (post) {
             if (!post.comments) {
@@ -1234,12 +1304,11 @@ function addComment(postId) {
             
             post.comments.push(newComment);
             
-            // 保存到Firebase
-            latestPosts[postId] = post;
+            // 保存到存储
             database.ref('posts').set(latestPosts);
             
             // 更新本地帖子数组
-            posts = Object.values(latestPosts);
+            posts = latestPosts;
             
             // 渲染帖子
             renderPosts();
@@ -1250,6 +1319,7 @@ function addComment(postId) {
             
             // 显示评论成功提示
             showToast('评论成功');
+            console.log('评论成功，当前评论数:', post.comments.length);
         }
     });
 }
