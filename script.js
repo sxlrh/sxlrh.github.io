@@ -1319,6 +1319,11 @@ createPostElement = function(post) {
     const filteredContent = filterSensitiveWords(post.content);
     const parsedContent = parseContent(filteredContent);
     
+    // 检查是否已收藏
+    const isFavorited = currentUser?.favorites?.includes(post.id);
+    // 检查是否是自己的帖子
+    const isOwnPost = currentUser && post.user_id === currentUser.id;
+    
     div.innerHTML = `
         ${userHtml}
         <div class="post-item-content">${parsedContent}</div>
@@ -1329,10 +1334,14 @@ createPostElement = function(post) {
                 <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" data-id="${post.id}">
                     <i class="fas fa-heart"></i> ${post.likes}
                 </button>
-                <button class="action-btn share-btn" data-id="${post.id}" onclick="sharePost('${post.id}')">
+                <button class="action-btn favorite-btn ${isFavorited ? 'liked' : ''}" onclick="toggleFavorite('${post.id}')">
+                    <i class="fas fa-bookmark"></i>
+                </button>
+                <button class="action-btn share-btn" onclick="sharePost('${post.id}')">
                     <i class="fas fa-share-alt"></i>
                 </button>
-                <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
+                ${isOwnPost ? `<button class="action-btn edit-btn" onclick="editPost('${post.id}')"><i class="fas fa-edit"></i></button>` : ''}
+                ${isOwnPost ? `<button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>` : ''}
             </div>
         </div>
         ${commentsHtml}
@@ -1770,6 +1779,9 @@ window.addEventListener('DOMContentLoaded', () => {
         setupShare();
         setupKeyboardShortcuts();
         setupCharCounter();
+        setupDoubleTapLike();
+        setupLongPressSave();
+        setupAnonymousToggle();
     }, 1000);
 });
 
@@ -2350,4 +2362,476 @@ handlePost = async function() {
     }
     
     await originalHandlePost2();
+};
+
+// ==================== 收藏功能 ====================
+window.toggleFavorite = async function(postId) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    try {
+        // 获取用户收藏列表
+        const { data: userData } = await supabase
+            .from('users')
+            .select('favorites')
+            .eq('id', currentUser.id)
+            .single();
+        
+        let favorites = userData?.favorites || [];
+        
+        if (favorites.includes(postId)) {
+            // 取消收藏
+            favorites = favorites.filter(id => id !== postId);
+            showToast('已取消收藏', 'success');
+        } else {
+            // 收藏
+            favorites.push(postId);
+            showToast('收藏成功', 'success');
+        }
+        
+        // 更新数据库
+        await supabase
+            .from('users')
+            .update({ favorites })
+            .eq('id', currentUser.id);
+        
+        // 更新本地
+        currentUser.favorites = favorites;
+        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        
+        renderPosts();
+        
+    } catch (error) {
+        console.error('收藏失败:', error);
+        showToast('操作失败', 'error');
+    }
+};
+
+// ==================== 双击点赞 ====================
+let lastTapTime = 0;
+let tapTimeout = null;
+
+function setupDoubleTapLike() {
+    document.addEventListener('dblclick', (e) => {
+        const postItem = e.target.closest('.post-item');
+        if (postItem) {
+            const postId = postItem.dataset.id;
+            if (postId) {
+                // 显示爱心动画
+                showHeartAnimation(e.clientX, e.clientY);
+                toggleLike(postId);
+            }
+        }
+    });
+}
+
+function showHeartAnimation(x, y) {
+    const heart = document.createElement('div');
+    heart.innerHTML = '❤️';
+    heart.style.cssText = `
+        position: fixed;
+        left: ${x - 25}px;
+        top: ${y - 25}px;
+        font-size: 50px;
+        pointer-events: none;
+        animation: heartPop 0.8s ease-out forwards;
+        z-index: 10000;
+    `;
+    document.body.appendChild(heart);
+    
+    setTimeout(() => heart.remove(), 800);
+}
+
+// 添加爱心动画样式
+const heartStyle = document.createElement('style');
+heartStyle.textContent = `
+    @keyframes heartPop {
+        0% { transform: scale(0); opacity: 1; }
+        50% { transform: scale(1.2); opacity: 1; }
+        100% { transform: scale(1) translateY(-50px); opacity: 0; }
+    }
+`;
+document.head.appendChild(heartStyle);
+
+// ==================== 长按保存图片 ====================
+let longPressTimer = null;
+
+function setupLongPressSave() {
+    document.addEventListener('touchstart', (e) => {
+        const img = e.target.closest('.post-item-media img');
+        if (img) {
+            longPressTimer = setTimeout(() => {
+                saveImage(img.src);
+            }, 800);
+        }
+    });
+    
+    document.addEventListener('touchend', () => {
+        clearTimeout(longPressTimer);
+    });
+    
+    document.addEventListener('touchmove', () => {
+        clearTimeout(longPressTimer);
+    });
+    
+    // 右键保存
+    document.addEventListener('contextmenu', (e) => {
+        const img = e.target.closest('.post-item-media img');
+        if (img) {
+            e.preventDefault();
+            saveImage(img.src);
+        }
+    });
+}
+
+window.saveImage = function(src) {
+    const a = document.createElement('a');
+    a.href = src;
+    a.download = `treehole_${Date.now()}.jpg`;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('图片已保存', 'success');
+};
+
+// ==================== 操作确认 ====================
+const originalDeletePost = deletePost;
+window.deletePost = async function(postId) {
+    // 创建确认对话框
+    const confirmed = await showConfirmDialog('确定要删除这条分享吗？', '删除后将无法恢复');
+    if (!confirmed) return;
+    
+    await originalDeletePost(postId);
+};
+
+function showConfirmDialog(message, subtext = '') {
+    return new Promise((resolve) => {
+        const dialog = document.createElement('div');
+        dialog.className = 'confirm-dialog';
+        dialog.innerHTML = `
+            <div class="confirm-dialog-overlay"></div>
+            <div class="confirm-dialog-content">
+                <div class="confirm-dialog-message">${message}</div>
+                ${subtext ? `<div class="confirm-dialog-subtext">${subtext}</div>` : ''}
+                <div class="confirm-dialog-buttons">
+                    <button class="confirm-btn cancel">取消</button>
+                    <button class="confirm-btn confirm">确定</button>
+                </div>
+            </div>
+        `;
+        
+        // 添加样式
+        const style = document.createElement('style');
+        style.textContent = `
+            .confirm-dialog {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                z-index: 10001;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .confirm-dialog-overlay {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+            }
+            .confirm-dialog-content {
+                position: relative;
+                background: var(--bg-secondary);
+                padding: 25px;
+                border-radius: 12px;
+                max-width: 350px;
+                text-align: center;
+                animation: slideUp 0.3s ease;
+            }
+            @keyframes slideUp {
+                from { transform: translateY(20px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+            }
+            .confirm-dialog-message {
+                font-size: 1.1rem;
+                font-weight: 600;
+                color: var(--text-primary);
+                margin-bottom: 10px;
+            }
+            .confirm-dialog-subtext {
+                font-size: 0.9rem;
+                color: var(--text-muted);
+                margin-bottom: 20px;
+            }
+            .confirm-dialog-buttons {
+                display: flex;
+                gap: 10px;
+            }
+            .confirm-btn {
+                flex: 1;
+                padding: 10px;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 1rem;
+                transition: all 0.3s ease;
+            }
+            .confirm-btn.cancel {
+                background: var(--bg-primary);
+                color: var(--text-secondary);
+            }
+            .confirm-btn.confirm {
+                background: #ff6b6b;
+                color: white;
+            }
+            .confirm-btn:hover {
+                transform: translateY(-2px);
+            }
+        `;
+        document.head.appendChild(style);
+        document.body.appendChild(dialog);
+        
+        // 绑定事件
+        dialog.querySelector('.cancel').addEventListener('click', () => {
+            dialog.remove();
+            resolve(false);
+        });
+        dialog.querySelector('.confirm').addEventListener('click', () => {
+            dialog.remove();
+            resolve(true);
+        });
+        dialog.querySelector('.confirm-dialog-overlay').addEventListener('click', () => {
+            dialog.remove();
+            resolve(false);
+        });
+    });
+}
+
+// ==================== 匿名发布 ====================
+let isAnonymous = false;
+
+function setupAnonymousToggle() {
+    const postActions = document.querySelector('.post-actions');
+    if (!postActions) return;
+    
+    const anonBtn = document.createElement('button');
+    anonBtn.id = 'anonymous-toggle';
+    anonBtn.className = 'upload-btn';
+    anonBtn.style.cssText = 'padding:8px 15px;font-size:0.85rem;';
+    anonBtn.innerHTML = '<i class="fas fa-user-secret"></i> 匿名';
+    anonBtn.onclick = toggleAnonymous;
+    
+    const emojiBtn = document.getElementById('emoji-btn');
+    if (emojiBtn) {
+        emojiBtn.after(anonBtn);
+    }
+}
+
+function toggleAnonymous() {
+    isAnonymous = !isAnonymous;
+    const btn = document.getElementById('anonymous-toggle');
+    if (btn) {
+        if (isAnonymous) {
+            btn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            btn.style.color = 'white';
+            showToast('已开启匿名模式', 'info');
+        } else {
+            btn.style.background = '#f8f9fa';
+            btn.style.color = '#666';
+            showToast('已关闭匿名模式', 'info');
+        }
+    }
+}
+
+// 修改 handlePost 支持匿名
+const originalHandlePost3 = handlePost;
+handlePost = async function() {
+    const postText = document.getElementById('post-text');
+    const text = postText?.value.trim() || '';
+    
+    if (text.length > 1000) {
+        showToast('内容超过1000字限制', 'error');
+        return;
+    }
+    
+    // 保存匿名状态
+    const wasAnonymous = isAnonymous;
+    
+    // 如果匿名，临时修改用户信息
+    if (wasAnonymous && currentUser) {
+        const originalUser = { ...currentUser };
+        currentUser.username = '匿名用户';
+        currentUser.avatar = 'https://ui-avatars.com/api/?name=Anonymous&background=888888&color=fff';
+        
+        await originalHandlePost3();
+        
+        // 恢复用户信息
+        currentUser = originalUser;
+        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+    } else {
+        await originalHandlePost3();
+    }
+};
+
+// ==================== 帖子编辑 ====================
+window.editPost = async function(postId) {
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    
+    // 检查权限
+    if (!currentUser || post.user_id !== currentUser.id) {
+        showToast('无权限编辑', 'error');
+        return;
+    }
+    
+    // 创建编辑对话框
+    const dialog = document.createElement('div');
+    dialog.className = 'modal';
+    dialog.style.display = 'block';
+    dialog.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>编辑帖子</h3>
+                <span class="close-btn" onclick="this.closest('.modal').remove()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <textarea id="edit-post-text" style="width:100%;min-height:150px;padding:15px;border:2px solid #e0e0e0;border-radius:8px;font-size:1rem;resize:vertical;">${post.content || ''}</textarea>
+                <div style="display:flex;gap:10px;margin-top:15px;">
+                    <button class="upload-btn" onclick="this.closest('.modal').remove()" style="flex:1;">取消</button>
+                    <button id="save-edit-btn" class="post-btn" style="flex:1;">保存</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(dialog);
+    
+    // 绑定保存事件
+    document.getElementById('save-edit-btn').addEventListener('click', async () => {
+        const newContent = document.getElementById('edit-post-text').value.trim();
+        if (!newContent) {
+            showToast('内容不能为空', 'error');
+            return;
+        }
+        
+        if (containsSensitiveWords(newContent)) {
+            showToast('内容包含敏感词', 'error');
+            return;
+        }
+        
+        try {
+            const filteredContent = filterSensitiveWords(newContent);
+            
+            await supabase
+                .from('posts')
+                .update({ content: filteredContent })
+                .eq('id', postId);
+            
+            dialog.remove();
+            await loadPosts();
+            showToast('编辑成功', 'success');
+        } catch (error) {
+            console.error('编辑失败:', error);
+            showToast('编辑失败', 'error');
+        }
+    });
+};
+
+// ==================== 表情回应评论 ====================
+const commentReactions = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+
+window.showCommentReactions = function(postId, commentId) {
+    const post = posts.find(p => p.id === postId);
+    if (!post || !post.comments) return;
+    
+    const comment = post.comments.find(c => c.id === commentId);
+    if (!comment) return;
+    
+    // 创建表情选择器
+    const picker = document.createElement('div');
+    picker.className = 'reaction-picker';
+    picker.innerHTML = commentReactions.map(r => 
+        `<span class="reaction-item" onclick="addCommentReaction('${postId}', '${commentId}', '${r}')">${r}</span>`
+    ).join('');
+    
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .reaction-picker {
+            position: absolute;
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            padding: 8px 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+        }
+        .reaction-item {
+            font-size: 1.3rem;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .reaction-item:hover {
+            transform: scale(1.3);
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // 定位
+    const rect = event.target.getBoundingClientRect();
+    picker.style.top = `${rect.top - 50}px`;
+    picker.style.left = `${rect.left}px`;
+    
+    document.body.appendChild(picker);
+    
+    // 点击其他地方关闭
+    const closePicker = (e) => {
+        if (!picker.contains(e.target)) {
+            picker.remove();
+            document.removeEventListener('click', closePicker);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closePicker), 100);
+};
+
+window.addCommentReaction = async function(postId, commentId, reaction) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    try {
+        const post = posts.find(p => p.id === postId);
+        if (!post || !post.comments) return;
+        
+        const comment = post.comments.find(c => c.id === commentId);
+        if (!comment) return;
+        
+        if (!comment.reactions) comment.reactions = {};
+        if (!comment.reactions[reaction]) comment.reactions[reaction] = [];
+        
+        // 检查是否已回应
+        const userIndex = comment.reactions[reaction].indexOf(currentUser.id);
+        if (userIndex > -1) {
+            comment.reactions[reaction].splice(userIndex, 1);
+        } else {
+            comment.reactions[reaction].push(currentUser.id);
+        }
+        
+        await supabase
+            .from('posts')
+            .update({ comments: post.comments })
+            .eq('id', postId);
+        
+        renderPosts();
+        
+    } catch (error) {
+        console.error('回应失败:', error);
+    }
 };
