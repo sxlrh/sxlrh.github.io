@@ -552,7 +552,9 @@ function startAutoUpdate() {
     // 每3分钟检查一次更新
     updateInterval = setInterval(() => {
         checkForUpdates();
+        console.log('自动更新检查触发');
     }, 180000); // 3分钟 = 180000毫秒
+    console.log('自动更新已启动，每3分钟检查一次');
 }
 
 // 检查更新
@@ -593,9 +595,11 @@ function checkForUpdates() {
 // 启动实时数据监听
 function startRealTimeUpdates() {
     try {
+        console.log('正在启动实时数据监听...');
         // 监听帖子数据变化
         const postsRef = ref(database, 'posts');
         onValue(postsRef, (snapshot) => {
+            console.log('实时更新：收到帖子数据变化');
             let updatedPosts = snapshot.val() || [];
             
             // 确保是数组
@@ -608,26 +612,29 @@ function startRealTimeUpdates() {
                 posts = updatedPosts;
                 renderPosts();
                 showToast('内容已更新');
-                console.log('实时更新：检测到内容变化');
+                console.log('实时更新：检测到内容变化，更新了', posts.length, '个帖子');
             }
         });
         
         // 监听用户数据变化
         const usersRef = ref(database, 'users');
         onValue(usersRef, (snapshot) => {
+            console.log('实时更新：收到用户数据变化');
             const users = snapshot.val() || {};
             // 如果当前用户存在，更新用户信息
             if (currentUser && users[currentUser.id]) {
                 currentUser = users[currentUser.id];
                 saveUser();
                 updateUserInfo();
+                console.log('实时更新：用户信息已更新');
             }
         });
         
-        console.log('实时数据监听已启动');
+        console.log('实时数据监听已成功启动');
     } catch (error) {
         console.error('启动实时数据监听失败:', error);
         // 回退到轮询更新
+        console.log('回退到轮询更新');
         startAutoUpdate();
     }
 }
@@ -1032,9 +1039,9 @@ function sendMessage() {
 function handleImageUpload(e) {
     const file = e.target.files[0];
     if (file) {
-        // 检查文件大小（限制为5MB）
-        if (file.size > 5 * 1024 * 1024) {
-            showToast('图片大小不能超过5MB');
+        // 检查文件大小（限制为50MB）
+        if (file.size > 50 * 1024 * 1024) {
+            showToast('图片大小不能超过50MB');
             return;
         }
         
