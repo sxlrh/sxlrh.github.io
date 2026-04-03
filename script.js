@@ -1,5 +1,9 @@
 // 文章管理系统
 
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
 // 全局变量
 let posts = [];
 let currentImage = null;
@@ -11,25 +15,28 @@ let currentUser = null;
 let lastUpdateTime = 0;
 let updateInterval = null;
 let database = null;
+let dbRef = null;
 
 // Firebase配置
 const firebaseConfig = {
-    apiKey: "AIzaSyA8eE5Y1f9tK7e5X5e7e5e5e5e5e5e5e5",
-    authDomain: "treehole-12345.firebaseapp.com",
-    databaseURL: "https://treehole-12345-default-rtdb.firebaseio.com",
-    projectId: "treehole-12345",
-    storageBucket: "treehole-12345.appspot.com",
-    messagingSenderId: "1234567890",
-    appId: "1:1234567890:web:1234567890abcdef"
+  apiKey: "AIzaSyAvWzmxHNSHG9wTbjv9dv4Ce-mN_OFBN7g",
+  authDomain: "xlsd-f3985.firebaseapp.com",
+  databaseURL: "https://xlsd-f3985-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "xlsd-f3985",
+  storageBucket: "xlsd-f3985.firebasestorage.app",
+  messagingSenderId: "728217927193",
+  appId: "1:728217927193:web:4a81b4ca32fe38783eb488",
+  measurementId: "G-8X11WEXLLJ"
 };
 
 // 初始化Firebase
 function initFirebase() {
     try {
         // 初始化Firebase应用
-        firebase.initializeApp(firebaseConfig);
+        const app = initializeApp(firebaseConfig);
         // 获取数据库引用
-        database = firebase.database();
+        database = getDatabase(app);
+        dbRef = ref(database);
         console.log('Firebase初始化成功');
         showToast('数据存储初始化成功，所有用户可以实时共享内容');
     } catch (error) {
@@ -210,7 +217,8 @@ function login() {
     }
     
     // 从Firebase加载用户数据
-    database.ref('users').once('value', (snapshot) => {
+    const usersRef = ref(database, 'users');
+    get(usersRef).then((snapshot) => {
         const users = snapshot.val() || {};
         const user = Object.values(users).find(u => u.username === username && u.password === password);
         
@@ -223,6 +231,9 @@ function login() {
         } else {
             showToast('用户名或密码错误');
         }
+    }).catch((error) => {
+        console.error('登录失败:', error);
+        showToast('登录失败，请检查网络连接');
     });
 }
 
@@ -243,7 +254,8 @@ function register() {
     }
     
     // 从Firebase加载用户数据
-    database.ref('users').once('value', (snapshot) => {
+    const usersRef = ref(database, 'users');
+    get(usersRef).then((snapshot) => {
         const users = snapshot.val() || {};
         
         // 检查用户名是否已存在
@@ -266,13 +278,19 @@ function register() {
         
         // 保存到Firebase
         users[uniqueId] = newUser;
-        database.ref('users').set(users);
-        
-        currentUser = newUser;
-        saveUser();
-        updateUserInfo();
-        hideAuthModal();
-        showToast('注册成功，您的用户ID是：' + uniqueId);
+        set(usersRef, users).then(() => {
+            currentUser = newUser;
+            saveUser();
+            updateUserInfo();
+            hideAuthModal();
+            showToast('注册成功，您的用户ID是：' + uniqueId);
+        }).catch((error) => {
+            console.error('注册失败:', error);
+            showToast('注册失败，请检查网络连接');
+        });
+    }).catch((error) => {
+        console.error('注册失败:', error);
+        showToast('注册失败，请检查网络连接');
     });
 }
 
@@ -282,7 +300,8 @@ function loginWithWechat() {
     let randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
     
     // 从Firebase加载用户数据
-    database.ref('users').once('value', (snapshot) => {
+    const usersRef = ref(database, 'users');
+    get(usersRef).then((snapshot) => {
         const users = snapshot.val() || {};
         
         // 检查用户名是否已存在
@@ -302,13 +321,19 @@ function loginWithWechat() {
         
         // 保存到Firebase
         users[uniqueId] = newUser;
-        database.ref('users').set(users);
-        
-        currentUser = newUser;
-        saveUser();
-        updateUserInfo();
-        hideAuthModal();
-        showToast('微信登录成功，您的用户ID是：' + uniqueId);
+        set(usersRef, users).then(() => {
+            currentUser = newUser;
+            saveUser();
+            updateUserInfo();
+            hideAuthModal();
+            showToast('微信登录成功，您的用户ID是：' + uniqueId);
+        }).catch((error) => {
+            console.error('微信登录失败:', error);
+            showToast('微信登录失败，请检查网络连接');
+        });
+    }).catch((error) => {
+        console.error('微信登录失败:', error);
+        showToast('微信登录失败，请检查网络连接');
     });
 }
 
@@ -318,7 +343,8 @@ function loginWithQQ() {
     let randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
     
     // 从Firebase加载用户数据
-    database.ref('users').once('value', (snapshot) => {
+    const usersRef = ref(database, 'users');
+    get(usersRef).then((snapshot) => {
         const users = snapshot.val() || {};
         
         // 检查用户名是否已存在
@@ -338,13 +364,19 @@ function loginWithQQ() {
         
         // 保存到Firebase
         users[uniqueId] = newUser;
-        database.ref('users').set(users);
-        
-        currentUser = newUser;
-        saveUser();
-        updateUserInfo();
-        hideAuthModal();
-        showToast('QQ登录成功，您的用户ID是：' + uniqueId);
+        set(usersRef, users).then(() => {
+            currentUser = newUser;
+            saveUser();
+            updateUserInfo();
+            hideAuthModal();
+            showToast('QQ登录成功，您的用户ID是：' + uniqueId);
+        }).catch((error) => {
+            console.error('QQ登录失败:', error);
+            showToast('QQ登录失败，请检查网络连接');
+        });
+    }).catch((error) => {
+        console.error('QQ登录失败:', error);
+        showToast('QQ登录失败，请检查网络连接');
     });
 }
 
@@ -424,27 +456,34 @@ function saveSettings() {
     // 更新本地存储中的用户信息
     saveUser();
     
-    // 从公共存储加载用户数据
-    database.ref('users').once('value', (snapshot) => {
+    // 从Firebase加载用户数据
+    const usersRef = ref(database, 'users');
+    get(usersRef).then((snapshot) => {
         const users = snapshot.val() || {};
         
         // 更新用户信息
         users[currentUser.id] = currentUser;
         
-        // 保存到公共存储
-        database.ref('users').set(users);
-        
-        // 更新界面显示
-        updateUserInfo();
-        
-        // 隐藏模态框
-        document.getElementById('settings-modal').style.display = 'none';
-        
-        showToast('设置保存成功');
-        
-        // 重新渲染帖子，更新用户信息
-        renderPosts();
-        showRanking('likes');
+        // 保存到Firebase
+        set(usersRef, users).then(() => {
+            // 更新界面显示
+            updateUserInfo();
+            
+            // 隐藏模态框
+            document.getElementById('settings-modal').style.display = 'none';
+            
+            showToast('设置保存成功');
+            
+            // 重新渲染帖子，更新用户信息
+            renderPosts();
+            showRanking('likes');
+        }).catch((error) => {
+            console.error('保存设置失败:', error);
+            showToast('保存设置失败，请检查网络连接');
+        });
+    }).catch((error) => {
+        console.error('保存设置失败:', error);
+        showToast('保存设置失败，请检查网络连接');
     });
 }
 
@@ -535,7 +574,8 @@ function checkForUpdates() {
 function startRealTimeUpdates() {
     try {
         // 监听帖子数据变化
-        database.ref('posts').on('value', (snapshot) => {
+        const postsRef = ref(database, 'posts');
+        onValue(postsRef, (snapshot) => {
             let updatedPosts = snapshot.val() || [];
             
             // 确保是数组
@@ -553,7 +593,8 @@ function startRealTimeUpdates() {
         });
         
         // 监听用户数据变化
-        database.ref('users').on('value', (snapshot) => {
+        const usersRef = ref(database, 'users');
+        onValue(usersRef, (snapshot) => {
             const users = snapshot.val() || {};
             // 如果当前用户存在，更新用户信息
             if (currentUser && users[currentUser.id]) {
@@ -614,7 +655,8 @@ function loadFriends() {
     friendsContainer.innerHTML = '';
     
     // 从Firebase加载好友数据
-    database.ref('friends').once('value', (friendsSnapshot) => {
+    const friendsRef = ref(database, 'friends');
+    get(friendsRef).then((friendsSnapshot) => {
         const friendsData = friendsSnapshot.val() || {};
         const friends = friendsData[currentUser.id] || [];
         
@@ -624,7 +666,8 @@ function loadFriends() {
         }
         
         // 从Firebase加载所有用户数据
-        database.ref('users').once('value', (usersSnapshot) => {
+        const usersRef = ref(database, 'users');
+        get(usersRef).then((usersSnapshot) => {
             const users = usersSnapshot.val() || {};
             
             friends.forEach(friendId => {
@@ -645,7 +688,13 @@ function loadFriends() {
                     friendsContainer.appendChild(friendElement);
                 }
             });
+        }).catch((error) => {
+            console.error('加载用户数据失败:', error);
+            showToast('加载好友列表失败，请检查网络连接');
         });
+    }).catch((error) => {
+        console.error('加载好友数据失败:', error);
+        showToast('加载好友列表失败，请检查网络连接');
     });
 }
 
@@ -655,7 +704,8 @@ function loadChatFriends() {
     chatFriendsList.innerHTML = '';
     
     // 从Firebase加载好友数据
-    database.ref('friends').once('value', (friendsSnapshot) => {
+    const friendsRef = ref(database, 'friends');
+    get(friendsRef).then((friendsSnapshot) => {
         const friendsData = friendsSnapshot.val() || {};
         const friends = friendsData[currentUser.id] || [];
         
@@ -665,7 +715,8 @@ function loadChatFriends() {
         }
         
         // 从Firebase加载所有用户数据
-        database.ref('users').once('value', (usersSnapshot) => {
+        const usersRef = ref(database, 'users');
+        get(usersRef).then((usersSnapshot) => {
             const users = usersSnapshot.val() || {};
             
             friends.forEach(friendId => {
@@ -691,7 +742,13 @@ function loadChatFriends() {
                     chatFriendsList.appendChild(friendElement);
                 }
             });
+        }).catch((error) => {
+            console.error('加载用户数据失败:', error);
+            showToast('加载聊天好友列表失败，请检查网络连接');
         });
+    }).catch((error) => {
+        console.error('加载好友数据失败:', error);
+        showToast('加载聊天好友列表失败，请检查网络连接');
     });
 }
 
@@ -704,8 +761,9 @@ function addFriend() {
         return;
     }
     
-    // 从公共存储加载所有用户数据
-    database.ref('users').once('value', (usersSnapshot) => {
+    // 从Firebase加载所有用户数据
+    const usersRef = ref(database, 'users');
+    get(usersRef).then((usersSnapshot) => {
         const users = usersSnapshot.val() || {};
         
         // 查找用户（同时支持用户名和ID）
@@ -716,8 +774,9 @@ function addFriend() {
             return;
         }
         
-        // 从公共存储加载好友数据
-        database.ref('friends').once('value', (friendsSnapshot) => {
+        // 从Firebase加载好友数据
+        const friendsRef = ref(database, 'friends');
+        get(friendsRef).then((friendsSnapshot) => {
             const friendsData = friendsSnapshot.val() || {};
             const userFriends = friendsData[currentUser.id] || [];
             
@@ -731,13 +790,22 @@ function addFriend() {
             userFriends.push(user.id);
             friendsData[currentUser.id] = userFriends;
             
-            // 保存到公共存储
-            database.ref('friends').set(friendsData);
-            
-            showToast('添加好友成功');
-            document.getElementById('add-friend-username').value = '';
-            loadFriends();
+            // 保存到Firebase
+            set(friendsRef, friendsData).then(() => {
+                showToast('添加好友成功');
+                document.getElementById('add-friend-username').value = '';
+                loadFriends();
+            }).catch((error) => {
+                console.error('添加好友失败:', error);
+                showToast('添加好友失败，请检查网络连接');
+            });
+        }).catch((error) => {
+            console.error('加载好友数据失败:', error);
+            showToast('添加好友失败，请检查网络连接');
         });
+    }).catch((error) => {
+        console.error('加载用户数据失败:', error);
+        showToast('添加好友失败，请检查网络连接');
     });
 }
 
@@ -745,7 +813,8 @@ function addFriend() {
 function removeFriend(friendId) {
     if (confirm('确定要删除这个好友吗？')) {
         // 从Firebase加载好友数据
-        database.ref('friends').once('value', (friendsSnapshot) => {
+        const friendsRef = ref(database, 'friends');
+        get(friendsRef).then((friendsSnapshot) => {
             const friendsData = friendsSnapshot.val() || {};
             let userFriends = friendsData[currentUser.id] || [];
             
@@ -754,11 +823,17 @@ function removeFriend(friendId) {
             friendsData[currentUser.id] = userFriends;
             
             // 保存到Firebase
-            database.ref('friends').set(friendsData);
-            
-            loadFriends();
-            loadChatFriends();
-            showToast('好友已删除');
+            set(friendsRef, friendsData).then(() => {
+                loadFriends();
+                loadChatFriends();
+                showToast('好友已删除');
+            }).catch((error) => {
+                console.error('删除好友失败:', error);
+                showToast('删除好友失败，请检查网络连接');
+            });
+        }).catch((error) => {
+            console.error('加载好友数据失败:', error);
+            showToast('删除好友失败，请检查网络连接');
         });
     }
 }
@@ -777,7 +852,8 @@ function getFriends() {
 // 开始聊天
 function startChat(friendId) {
     // 从Firebase加载所有用户数据
-    database.ref('users').once('value', (snapshot) => {
+    const usersRef = ref(database, 'users');
+    get(usersRef).then((snapshot) => {
         const users = snapshot.val() || {};
         const friend = users[friendId];
         
@@ -785,6 +861,9 @@ function startChat(friendId) {
             document.getElementById('chat-friend-name').textContent = friend.username;
             loadChatMessages(friendId);
         }
+    }).catch((error) => {
+        console.error('加载用户数据失败:', error);
+        showToast('加载聊天信息失败，请检查网络连接');
     });
 }
 
@@ -795,7 +874,8 @@ function loadChatMessages(friendId) {
     
     // 从Firebase加载聊天记录
     const chatKey = 'chat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
-    database.ref('chats').child(chatKey).once('value', (snapshot) => {
+    const chatRef = ref(database, 'chats/' + chatKey);
+    get(chatRef).then((snapshot) => {
         const messages = snapshot.val() || [];
         
         messages.forEach(message => {
@@ -810,6 +890,9 @@ function loadChatMessages(friendId) {
         
         // 滚动到底部
         chatMessages.scrollTop = chatMessages.scrollHeight;
+    }).catch((error) => {
+        console.error('加载聊天消息失败:', error);
+        showToast('加载聊天消息失败，请检查网络连接');
     });
 }
 
@@ -818,8 +901,9 @@ function searchFriends(keyword) {
     const friendsContainer = document.getElementById('friends-container');
     friendsContainer.innerHTML = '';
     
-    // 从公共存储加载好友数据
-    database.ref('friends').once('value', (friendsSnapshot) => {
+    // 从Firebase加载好友数据
+    const friendsRef = ref(database, 'friends');
+    get(friendsRef).then((friendsSnapshot) => {
         const friendsData = friendsSnapshot.val() || {};
         const friends = friendsData[currentUser.id] || [];
         
@@ -828,8 +912,9 @@ function searchFriends(keyword) {
             return;
         }
         
-        // 从公共存储加载所有用户数据
-        database.ref('users').once('value', (usersSnapshot) => {
+        // 从Firebase加载所有用户数据
+        const usersRef = ref(database, 'users');
+        get(usersRef).then((usersSnapshot) => {
             const users = usersSnapshot.val() || {};
             
             // 过滤好友
@@ -862,7 +947,13 @@ function searchFriends(keyword) {
                     friendsContainer.appendChild(friendElement);
                 }
             });
+        }).catch((error) => {
+            console.error('加载用户数据失败:', error);
+            showToast('搜索好友失败，请检查网络连接');
         });
+    }).catch((error) => {
+        console.error('加载好友数据失败:', error);
+        showToast('搜索好友失败，请检查网络连接');
     });
 }
 
@@ -894,19 +985,26 @@ function sendMessage() {
     
     // 保存消息到Firebase
     const chatKey = 'chat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
-    database.ref('chats').child(chatKey).once('value', (snapshot) => {
+    const chatRef = ref(database, 'chats/' + chatKey);
+    get(chatRef).then((snapshot) => {
         const messages = snapshot.val() || [];
         messages.push(message);
-        database.ref('chats').child(chatKey).set(messages);
-        
-        // 清空输入框
-        chatInput.value = '';
-        
-        // 重新加载消息
-        loadChatMessages(friendId);
-        
-        // 显示发送成功提示
-        showToast('消息发送成功');
+        set(chatRef, messages).then(() => {
+            // 清空输入框
+            chatInput.value = '';
+            
+            // 重新加载消息
+            loadChatMessages(friendId);
+            
+            // 显示发送成功提示
+            showToast('消息发送成功');
+        }).catch((error) => {
+            console.error('发送消息失败:', error);
+            showToast('发送消息失败，请检查网络连接');
+        });
+    }).catch((error) => {
+        console.error('加载聊天记录失败:', error);
+        showToast('发送消息失败，请检查网络连接');
     });
 }
 
@@ -1020,8 +1118,9 @@ function handlePost() {
         }
     };
     
-    // 从公共存储加载最新的帖子（确保不会覆盖其他用户的帖子）
-    database.ref('posts').once('value', (snapshot) => {
+    // 从Firebase加载最新的帖子（确保不会覆盖其他用户的帖子）
+    const postsRef = ref(database, 'posts');
+    get(postsRef).then((snapshot) => {
         let latestPosts = snapshot.val() || [];
         
         // 确保是数组
@@ -1032,26 +1131,32 @@ function handlePost() {
         // 添加新帖子
         latestPosts.unshift(newPost);
         
-        // 保存到公共存储
-        database.ref('posts').set(latestPosts);
-        
-        // 更新本地帖子数组
-        posts = latestPosts;
-        
-        // 渲染帖子
-        renderPosts();
-        
-        // 清空表单
-        document.getElementById('post-text').value = '';
-        currentImage = null;
-        currentVideo = null;
-        currentVoice = null;
-        document.getElementById('image-upload').value = '';
-        document.getElementById('video-upload').value = '';
-        
-        // 显示发布成功提示
-        showToast('发布成功');
-        console.log('发布成功，当前帖子数:', posts.length);
+        // 保存到Firebase
+        set(postsRef, latestPosts).then(() => {
+            // 更新本地帖子数组
+            posts = latestPosts;
+            
+            // 渲染帖子
+            renderPosts();
+            
+            // 清空表单
+            document.getElementById('post-text').value = '';
+            currentImage = null;
+            currentVideo = null;
+            currentVoice = null;
+            document.getElementById('image-upload').value = '';
+            document.getElementById('video-upload').value = '';
+            
+            // 显示发布成功提示
+            showToast('发布成功');
+            console.log('发布成功，当前帖子数:', posts.length);
+        }).catch((error) => {
+            console.error('发布帖子失败:', error);
+            showToast('发布帖子失败，请检查网络连接');
+        });
+    }).catch((error) => {
+        console.error('加载帖子失败:', error);
+        showToast('发布帖子失败，请检查网络连接');
     });
 }
 
@@ -1167,8 +1272,9 @@ function toggleLike(postId) {
         return;
     }
     
-    // 从公共存储加载最新的帖子
-    database.ref('posts').once('value', (snapshot) => {
+    // 从Firebase加载最新的帖子
+    const postsRef = ref(database, 'posts');
+    get(postsRef).then((snapshot) => {
         let latestPosts = snapshot.val() || [];
         
         // 确保是数组
@@ -1188,28 +1294,34 @@ function toggleLike(postId) {
                 post.likedBy.push(currentUser.id);
                 post.likes++;
                 
-                // 保存到公共存储
-                database.ref('posts').set(latestPosts);
-                
-                // 更新本地帖子数组
-                posts = latestPosts;
-                
-                // 渲染帖子
-                renderPosts();
-                
-                // 更新点赞榜
-                const activeTab = document.querySelector('.ranking-tab.active');
-                if (activeTab && activeTab.textContent.includes('点赞')) {
-                    showRanking('likes');
-                }
-                
-                // 显示点赞成功提示
-                showToast('点赞成功');
-                console.log('点赞成功，当前点赞数:', post.likes);
+                // 保存到Firebase
+                set(postsRef, latestPosts).then(() => {
+                    // 更新本地帖子数组
+                    posts = latestPosts;
+                    
+                    // 渲染帖子
+                    renderPosts();
+                    
+                    // 更新点赞榜
+                    const activeTab = document.querySelector('.ranking-tab.active');
+                    if (activeTab && activeTab.textContent.includes('点赞')) {
+                        showRanking('likes');
+                    }
+                    
+                    // 显示点赞成功提示
+                    showToast('点赞成功');
+                    console.log('点赞成功，当前点赞数:', post.likes);
+                }).catch((error) => {
+                    console.error('点赞失败:', error);
+                    showToast('点赞失败，请检查网络连接');
+                });
             } else {
                 showToast('你已经点过赞了');
             }
         }
+    }).catch((error) => {
+        console.error('加载帖子失败:', error);
+        showToast('点赞失败，请检查网络连接');
     });
 }
 
@@ -1222,8 +1334,9 @@ function deletePost(postId) {
         return;
     }
     
-    // 从公共存储加载最新的帖子
-    database.ref('posts').once('value', (snapshot) => {
+    // 从Firebase加载最新的帖子
+    const postsRef = ref(database, 'posts');
+    get(postsRef).then((snapshot) => {
         let latestPosts = snapshot.val() || [];
         
         // 确保是数组
@@ -1243,33 +1356,44 @@ function deletePost(postId) {
             // 从数组中删除帖子
             const updatedPosts = latestPosts.filter(p => p.id !== postId);
             
-            // 保存到公共存储
-            database.ref('posts').set(updatedPosts);
-            
-            // 更新本地帖子数组
-            posts = updatedPosts;
-            
-            // 渲染帖子
-            renderPosts();
-            
-            // 显示删除成功提示
-            showToast('删除成功');
-            console.log('删除成功，剩余帖子数:', posts.length);
+            // 保存到Firebase
+            set(postsRef, updatedPosts).then(() => {
+                // 更新本地帖子数组
+                posts = updatedPosts;
+                
+                // 渲染帖子
+                renderPosts();
+                
+                // 显示删除成功提示
+                showToast('删除成功');
+                console.log('删除成功，剩余帖子数:', posts.length);
+            }).catch((error) => {
+                console.error('删除帖子失败:', error);
+                showToast('删除帖子失败，请检查网络连接');
+            });
         }
+    }).catch((error) => {
+        console.error('加载帖子失败:', error);
+        showToast('删除帖子失败，请检查网络连接');
     });
 }
 
 // 保存帖子到Firebase
 function savePosts() {
     // 直接保存帖子数组
-    database.ref('posts').set(posts);
-    console.log('保存帖子到Firebase成功，当前帖子数:', posts.length);
+    const postsRef = ref(database, 'posts');
+    set(postsRef, posts).then(() => {
+        console.log('保存帖子到Firebase成功，当前帖子数:', posts.length);
+    }).catch((error) => {
+        console.error('保存帖子失败:', error);
+    });
 }
 
 // 从Firebase加载帖子
 function loadPosts() {
     try {
-        database.ref('posts').once('value', (snapshot) => {
+        const postsRef = ref(database, 'posts');
+        get(postsRef).then((snapshot) => {
             const storedPosts = snapshot.val();
             if (storedPosts) {
                 // 确保posts是数组
@@ -1282,11 +1406,14 @@ function loadPosts() {
             } else {
                 // 初始化空帖子数组
                 posts = [];
-                database.ref('posts').set([]);
+                set(postsRef, []);
                 console.log('初始化空帖子数组');
             }
             // 渲染帖子
             renderPosts();
+        }).catch((error) => {
+            console.error('加载帖子失败:', error);
+            showToast('加载帖子失败');
         });
     } catch (error) {
         console.error('加载帖子失败:', error);
@@ -1346,8 +1473,9 @@ function addComment(postId) {
         return;
     }
     
-    // 从公共存储加载最新的帖子
-    database.ref('posts').once('value', (snapshot) => {
+    // 从Firebase加载最新的帖子
+    const postsRef = ref(database, 'posts');
+    get(postsRef).then((snapshot) => {
         let latestPosts = snapshot.val() || [];
         
         // 确保是数组
@@ -1375,23 +1503,29 @@ function addComment(postId) {
             
             post.comments.push(newComment);
             
-            // 保存到公共存储
-            database.ref('posts').set(latestPosts);
-            
-            // 更新本地帖子数组
-            posts = latestPosts;
-            
-            // 渲染帖子
-            renderPosts();
-            showRanking('comments'); // 更新评论榜
-            
-            // 清空评论输入框
-            commentInput.value = '';
-            
-            // 显示评论成功提示
-            showToast('评论成功');
-            console.log('评论成功，当前评论数:', post.comments.length);
+            // 保存到Firebase
+            set(postsRef, latestPosts).then(() => {
+                // 更新本地帖子数组
+                posts = latestPosts;
+                
+                // 渲染帖子
+                renderPosts();
+                showRanking('comments'); // 更新评论榜
+                
+                // 清空评论输入框
+                commentInput.value = '';
+                
+                // 显示评论成功提示
+                showToast('评论成功');
+                console.log('评论成功，当前评论数:', post.comments.length);
+            }).catch((error) => {
+                console.error('添加评论失败:', error);
+                showToast('添加评论失败，请检查网络连接');
+            });
         }
+    }).catch((error) => {
+        console.error('加载帖子失败:', error);
+        showToast('添加评论失败，请检查网络连接');
     });
 }
 
