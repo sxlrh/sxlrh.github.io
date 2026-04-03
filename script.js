@@ -1242,13 +1242,19 @@ createPostElement = function(post) {
     if (post.comments && post.comments.length > 0) {
         commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
         post.comments.slice(-5).forEach(c => {
+            const commentLiked = currentUser && c.likedBy?.includes(currentUser.id);
             commentsHtml += `<li class="comment-item">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;cursor:pointer;" onclick="openUserProfile('${c.user_id}')">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
                 </div>
                 <span class="comment-text">${parseContent(c.content)}</span>
-                <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;">
+                    <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
+                    <button class="action-btn ${commentLiked ? 'liked' : ''}" onclick="toggleCommentLike('${post.id}', '${c.id}')" style="font-size:0.75rem;padding:2px 8px;">
+                        <i class="fas fa-heart"></i> ${c.likes || 0}
+                    </button>
+                </div>
             </li>`;
         });
         commentsHtml += '</ul></div>';
@@ -1708,6 +1714,7 @@ window.addEventListener('DOMContentLoaded', () => {
         setupUserProfile();
         setupShare();
         setupKeyboardShortcuts();
+        setupCharCounter();
     }, 1000);
 });
 
@@ -2119,3 +2126,173 @@ function setupKeyboardShortcuts() {
         hint.style.display = 'none';
     });
 }
+
+// ==================== 图片压缩 ====================
+async function compressImage(file, maxWidth = 1920, quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                // 创建 canvas
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // 计算缩放比例
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // 绘制图片
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // 转换为 Blob
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        // 如果压缩后更大，返回原文件
+                        if (blob.size >= file.size) {
+                            resolve(file);
+                        } else {
+                            resolve(new File([blob], file.name, { type: file.type }));
+                        }
+                    } else {
+                        reject(new Error('压缩失败'));
+                    }
+                }, file.type, quality);
+            };
+            img.onerror = () => reject(new Error('图片加载失败'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('文件读取失败'));
+        reader.readAsDataURL(file);
+    });
+}
+
+// 修改图片上传函数，添加压缩
+const originalHandleImageUpload = handleImageUpload;
+handleImageUpload = async function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('图片不能超过5MB', 'error');
+            return;
+        }
+        
+        // 显示压缩提示
+        showToast('正在压缩图片...', 'info');
+        
+        try {
+            // 压缩图片
+            const compressedFile = await compressImage(file);
+            currentImage = compressedFile;
+            currentVideo = null;
+            currentVoice = null;
+            
+            const savedSize = ((file.size - compressedFile.size) / 1024).toFixed(1);
+            showToast(`图片已压缩，节省 ${savedSize}KB`, 'success');
+        } catch (error) {
+            console.error('压缩失败:', error);
+            currentImage = file;
+            showToast('图片已选择', 'success');
+        }
+    }
+};
+
+// ==================== 评论点赞 ====================
+window.toggleCommentLike = async function(postId, commentId) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    try {
+        const post = posts.find(p => p.id === postId);
+        if (!post || !post.comments) return;
+        
+        const comment = post.comments.find(c => c.id === commentId);
+        if (!comment) return;
+        
+        // 初始化点赞数据
+        if (!comment.likedBy) comment.likedBy = [];
+        
+        if (comment.likedBy.includes(currentUser.id)) {
+            // 取消点赞
+            comment.likedBy = comment.likedBy.filter(id => id !== currentUser.id);
+            comment.likes = Math.max(0, (comment.likes || 0) - 1);
+        } else {
+            // 点赞
+            comment.likedBy.push(currentUser.id);
+            comment.likes = (comment.likes || 0) + 1;
+        }
+        
+        // 更新数据库
+        await supabase
+            .from('posts')
+            .update({ comments: post.comments })
+            .eq('id', postId);
+        
+        // 重新渲染
+        renderPosts();
+        
+    } catch (error) {
+        console.error('评论点赞失败:', error);
+        showToast('操作失败', 'error');
+    }
+};
+
+// ==================== 输入字数统计 ====================
+function setupCharCounter() {
+    const postText = document.getElementById('post-text');
+    if (!postText) return;
+    
+    const maxLength = 1000;
+    
+    // 创建计数器
+    const counter = document.createElement('div');
+    counter.id = 'char-counter';
+    counter.style.cssText = 'text-align:right;color:#999;font-size:0.85rem;margin-top:5px;';
+    counter.innerHTML = `<span id="char-count">0</span> / ${maxLength}`;
+    postText.parentNode.insertBefore(counter, postText.nextSibling);
+    
+    // 监听输入
+    postText.addEventListener('input', () => {
+        const length = postText.value.length;
+        const countSpan = document.getElementById('char-count');
+        
+        if (countSpan) {
+            countSpan.textContent = length;
+            
+            if (length > maxLength) {
+                countSpan.style.color = '#ff6b6b';
+                postText.style.borderColor = '#ff6b6b';
+            } else if (length > maxLength * 0.9) {
+                countSpan.style.color = '#ffa500';
+                postText.style.borderColor = '#ffa500';
+            } else {
+                countSpan.style.color = '#999';
+                postText.style.borderColor = '';
+            }
+        }
+    });
+}
+
+// 修改 handlePost 添加字数限制
+const originalHandlePost2 = handlePost;
+handlePost = async function() {
+    const postText = document.getElementById('post-text');
+    const text = postText?.value.trim() || '';
+    
+    if (text.length > 1000) {
+        showToast('内容超过1000字限制', 'error');
+        return;
+    }
+    
+    await originalHandlePost2();
+};
