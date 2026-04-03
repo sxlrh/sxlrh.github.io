@@ -549,10 +549,10 @@ function showToast(message) {
 
 // 启动自动更新
 function startAutoUpdate() {
-    // 每10分钟检查一次更新
+    // 每3分钟检查一次更新
     updateInterval = setInterval(() => {
         checkForUpdates();
-    }, 600000); // 10分钟 = 600000毫秒
+    }, 180000); // 3分钟 = 180000毫秒
 }
 
 // 检查更新
@@ -1032,13 +1032,31 @@ function sendMessage() {
 function handleImageUpload(e) {
     const file = e.target.files[0];
     if (file) {
+        // 检查文件大小（限制为5MB）
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('图片大小不能超过5MB');
+            return;
+        }
+        
+        // 检查文件类型
+        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+            showToast('只支持JPEG、PNG、GIF和WebP格式的图片');
+            return;
+        }
+        
         const reader = new FileReader();
         reader.onload = function(e) {
             currentImage = e.target.result;
             currentVideo = null; // 清除视频
             currentVoice = null; // 清除语音
-            alert('图片已选择');
+            showToast('图片已选择');
         };
+        
+        reader.onerror = function() {
+            showToast('图片读取失败，请重试');
+        };
+        
         reader.readAsDataURL(file);
     }
 }
@@ -1119,6 +1137,9 @@ function handlePost() {
         return;
     }
     
+    // 显示发布中提示
+    showToast('发布中，请稍候...');
+    
     // 创建新帖子
     const newPost = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -1138,23 +1159,32 @@ function handlePost() {
         }
     };
     
+    // 先保存到本地存储作为备份
+    const localPosts = localStorage.getItem('treehole_public_posts');
+    let latestPosts = [];
+    if (localPosts) {
+        latestPosts = JSON.parse(localPosts);
+    }
+    latestPosts.unshift(newPost);
+    localStorage.setItem('treehole_public_posts', JSON.stringify(latestPosts));
+    
     // 从Firebase加载最新的帖子（确保不会覆盖其他用户的帖子）
     const postsRef = ref(database, 'posts');
     get(postsRef).then((snapshot) => {
-        let latestPosts = snapshot.val() || [];
+        let firebasePosts = snapshot.val() || [];
         
         // 确保是数组
-        if (!Array.isArray(latestPosts)) {
-            latestPosts = Object.values(latestPosts);
+        if (!Array.isArray(firebasePosts)) {
+            firebasePosts = Object.values(firebasePosts);
         }
         
         // 添加新帖子
-        latestPosts.unshift(newPost);
+        firebasePosts.unshift(newPost);
         
         // 保存到Firebase
-        set(postsRef, latestPosts).then(() => {
+        set(postsRef, firebasePosts).then(() => {
             // 更新本地帖子数组
-            posts = latestPosts;
+            posts = firebasePosts;
             
             // 渲染帖子
             renderPosts();
@@ -1172,11 +1202,31 @@ function handlePost() {
             console.log('发布成功，当前帖子数:', posts.length);
         }).catch((error) => {
             console.error('发布帖子失败:', error);
-            showToast('发布帖子失败，请检查网络连接');
+            // 即使Firebase失败，也使用本地存储的数据
+            posts = latestPosts;
+            renderPosts();
+            showToast('发布到云端失败，但已保存到本地');
+            // 清空表单
+            document.getElementById('post-text').value = '';
+            currentImage = null;
+            currentVideo = null;
+            currentVoice = null;
+            document.getElementById('image-upload').value = '';
+            document.getElementById('video-upload').value = '';
         });
     }).catch((error) => {
         console.error('加载帖子失败:', error);
-        showToast('发布帖子失败，请检查网络连接');
+        // 即使Firebase失败，也使用本地存储的数据
+        posts = latestPosts;
+        renderPosts();
+        showToast('发布到云端失败，但已保存到本地');
+        // 清空表单
+        document.getElementById('post-text').value = '';
+        currentImage = null;
+        currentVideo = null;
+        currentVoice = null;
+        document.getElementById('image-upload').value = '';
+        document.getElementById('video-upload').value = '';
     });
 }
 
@@ -1269,16 +1319,41 @@ function createPostElement(post) {
         <div class="post-item-meta">
             <span class="post-time">${post.timestamp} · ${post.views} 浏览</span>
             <div class="post-item-actions">
-                <button class="${likeButtonClass}" onclick="toggleLike(${post.id})"><i class="fas fa-heart"></i> <span>${post.likes}</span></button>
-                <button class="action-btn delete-btn" onclick="deletePost(${post.id})"><i class="fas fa-trash"></i> 删除</button>
+                <button class="${likeButtonClass}" data-post-id="${post.id}"><i class="fas fa-heart"></i> <span>${post.likes}</span></button>
+                <button class="action-btn delete-btn" data-post-id="${post.id}"><i class="fas fa-trash"></i> 删除</button>
             </div>
         </div>
         ${commentsHtml}
         <div class="comment-form">
             <input type="text" class="comment-input" placeholder="写下你的评论..." data-post-id="${post.id}">
-            <button class="comment-btn" onclick="addComment(${post.id})"><i class="fas fa-paper-plane"></i></button>
+            <button class="comment-btn" data-post-id="${post.id}"><i class="fas fa-paper-plane"></i></button>
         </div>
     `;
+    
+    // 添加事件监听器
+    const likeButton = postDiv.querySelector('.like-btn');
+    if (likeButton) {
+        likeButton.addEventListener('click', function() {
+            const postId = this.dataset.postId;
+            toggleLike(postId);
+        });
+    }
+    
+    const deleteButton = postDiv.querySelector('.delete-btn');
+    if (deleteButton) {
+        deleteButton.addEventListener('click', function() {
+            const postId = this.dataset.postId;
+            deletePost(postId);
+        });
+    }
+    
+    const commentButton = postDiv.querySelector('.comment-btn');
+    if (commentButton) {
+        commentButton.addEventListener('click', function() {
+            const postId = this.dataset.postId;
+            addComment(postId);
+        });
+    }
     
     return postDiv;
 }
@@ -1400,12 +1475,17 @@ function deletePost(postId) {
 
 // 保存帖子到Firebase
 function savePosts() {
-    // 直接保存帖子数组
+    // 先保存到本地存储作为备份
+    localStorage.setItem('treehole_public_posts', JSON.stringify(posts));
+    console.log('保存帖子到本地存储成功，当前帖子数:', posts.length);
+    
+    // 然后保存到Firebase
     const postsRef = ref(database, 'posts');
     set(postsRef, posts).then(() => {
         console.log('保存帖子到Firebase成功，当前帖子数:', posts.length);
     }).catch((error) => {
-        console.error('保存帖子失败:', error);
+        console.error('保存帖子到Firebase失败:', error);
+        showToast('保存到云端失败，但已保存到本地');
     });
 }
 
@@ -1433,11 +1513,25 @@ function loadPosts() {
             renderPosts();
         }).catch((error) => {
             console.error('加载帖子失败:', error);
-            showToast('加载帖子失败');
+            showToast('加载帖子失败，将尝试从本地存储加载');
+            // 回退到本地存储
+            const localPosts = localStorage.getItem('treehole_public_posts');
+            if (localPosts) {
+                posts = JSON.parse(localPosts);
+                renderPosts();
+                console.log('从本地存储加载到', posts.length, '个帖子');
+            }
         });
     } catch (error) {
         console.error('加载帖子失败:', error);
-        showToast('加载帖子失败');
+        showToast('加载帖子失败，将尝试从本地存储加载');
+        // 回退到本地存储
+        const localPosts = localStorage.getItem('treehole_public_posts');
+        if (localPosts) {
+            posts = JSON.parse(localPosts);
+            renderPosts();
+            console.log('从本地存储加载到', posts.length, '个帖子');
+        }
     }
 }
 
