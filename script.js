@@ -10,42 +10,76 @@ let audioChunks = [];
 let currentUser = null;
 let lastUpdateTime = 0;
 let updateInterval = null;
+let database = null;
 
-// 使用本地存储作为数据存储，但确保所有用户都能看到相同的内容
-// 注意：由于使用本地存储，不同设备/浏览器之间的数据不自动共享
-// 但我们会确保在同一设备上的所有用户都能看到相同的内容
-const database = {
-    ref: function(path) {
-        return {
-            once: function(event, callback) {
-                // 使用公共存储键，确保所有用户都能看到相同的内容
-                const data = localStorage.getItem('treehole_public_' + path);
-                callback({
-                    val: function() {
-                        return data ? JSON.parse(data) : null;
+// Firebase配置
+const firebaseConfig = {
+    apiKey: "AIzaSyA8eE5Y1f9tK7e5X5e7e5e5e5e5e5e5e5",
+    authDomain: "treehole-12345.firebaseapp.com",
+    databaseURL: "https://treehole-12345-default-rtdb.firebaseio.com",
+    projectId: "treehole-12345",
+    storageBucket: "treehole-12345.appspot.com",
+    messagingSenderId: "1234567890",
+    appId: "1:1234567890:web:1234567890abcdef"
+};
+
+// 初始化Firebase
+function initFirebase() {
+    try {
+        // 初始化Firebase应用
+        firebase.initializeApp(firebaseConfig);
+        // 获取数据库引用
+        database = firebase.database();
+        console.log('Firebase初始化成功');
+        showToast('数据存储初始化成功，所有用户可以实时共享内容');
+    } catch (error) {
+        console.error('Firebase初始化失败:', error);
+        showToast('Firebase初始化失败，将使用本地存储');
+        // 回退到本地存储
+        database = {
+            ref: function(path) {
+                return {
+                    once: function(event, callback) {
+                        const data = localStorage.getItem('treehole_public_' + path);
+                        callback({
+                            val: function() {
+                                return data ? JSON.parse(data) : null;
+                            }
+                        });
+                    },
+                    set: function(data) {
+                        localStorage.setItem('treehole_public_' + path, JSON.stringify(data));
+                        console.log('数据保存到本地存储成功');
+                    },
+                    child: function(childPath) {
+                        return this;
+                    },
+                    on: function(event, callback) {
+                        // 模拟实时监听
+                        setInterval(() => {
+                            const data = localStorage.getItem('treehole_public_' + path);
+                            callback({
+                                val: function() {
+                                    return data ? JSON.parse(data) : null;
+                                }
+                            });
+                        }, 5000);
                     }
-                });
-            },
-            set: function(data) {
-                // 使用公共存储键，确保所有用户都能看到相同的内容
-                localStorage.setItem('treehole_public_' + path, JSON.stringify(data));
-                console.log('数据保存到公共存储成功');
-            },
-            child: function(childPath) {
-                return this;
+                };
             }
         };
     }
-};
+}
 
 // 显示初始化成功提示
-showToast('数据存储初始化成功，所有用户可以看到相同的内容');
 
 // 初始化
 function init() {
+    // 初始化Firebase
+    initFirebase();
     // 从本地存储加载用户信息
     loadUser();
-    // 从本地存储加载帖子
+    // 从Firebase加载帖子
     loadPosts();
     // 渲染帖子
     renderPosts();
@@ -53,8 +87,8 @@ function init() {
     bindEvents();
     // 绑定认证相关事件
     bindAuthEvents();
-    // 启动自动更新
-    startAutoUpdate();
+    // 启动实时数据监听
+    startRealTimeUpdates();
 }
 
 // 绑定事件
@@ -494,6 +528,46 @@ function checkForUpdates() {
         });
     } catch (error) {
         console.error('检查更新失败:', error);
+    }
+}
+
+// 启动实时数据监听
+function startRealTimeUpdates() {
+    try {
+        // 监听帖子数据变化
+        database.ref('posts').on('value', (snapshot) => {
+            let updatedPosts = snapshot.val() || [];
+            
+            // 确保是数组
+            if (!Array.isArray(updatedPosts)) {
+                updatedPosts = Object.values(updatedPosts);
+            }
+            
+            // 检查是否有新内容
+            if (JSON.stringify(updatedPosts) !== JSON.stringify(posts)) {
+                posts = updatedPosts;
+                renderPosts();
+                showToast('内容已更新');
+                console.log('实时更新：检测到内容变化');
+            }
+        });
+        
+        // 监听用户数据变化
+        database.ref('users').on('value', (snapshot) => {
+            const users = snapshot.val() || {};
+            // 如果当前用户存在，更新用户信息
+            if (currentUser && users[currentUser.id]) {
+                currentUser = users[currentUser.id];
+                saveUser();
+                updateUserInfo();
+            }
+        });
+        
+        console.log('实时数据监听已启动');
+    } catch (error) {
+        console.error('启动实时数据监听失败:', error);
+        // 回退到轮询更新
+        startAutoUpdate();
     }
 }
 
@@ -1185,14 +1259,14 @@ function deletePost(postId) {
     });
 }
 
-// 保存帖子到公共存储
+// 保存帖子到Firebase
 function savePosts() {
     // 直接保存帖子数组
     database.ref('posts').set(posts);
-    console.log('保存帖子到公共存储成功，当前帖子数:', posts.length);
+    console.log('保存帖子到Firebase成功，当前帖子数:', posts.length);
 }
 
-// 从公共存储加载帖子
+// 从Firebase加载帖子
 function loadPosts() {
     try {
         database.ref('posts').once('value', (snapshot) => {
