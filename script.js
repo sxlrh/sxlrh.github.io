@@ -11,50 +11,29 @@ let currentUser = null;
 let lastUpdateTime = 0;
 let updateInterval = null;
 
-// Firebase配置
-const firebaseConfig = {
-    apiKey: "AIzaSyC5gXl4yW6a7E1X4X4X4X4X4X4X4X4X4X4",
-    authDomain: "treehole-website-12345.firebaseapp.com",
-    databaseURL: "https://treehole-website-12345-default-rtdb.firebaseio.com",
-    projectId: "treehole-website-12345",
-    storageBucket: "treehole-website-12345.appspot.com",
-    messagingSenderId: "123456789012",
-    appId: "1:123456789012:web:abcdef1234567890"
+// 使用本地存储作为数据存储
+const database = {
+    ref: function(path) {
+        return {
+            once: function(event, callback) {
+                // 使用公共存储键，确保所有用户都能看到相同的内容
+                const data = localStorage.getItem('treehole_' + path);
+                callback({
+                    val: function() {
+                        return data ? JSON.parse(data) : null;
+                    }
+                });
+            },
+            set: function(data) {
+                // 使用公共存储键，确保所有用户都能看到相同的内容
+                localStorage.setItem('treehole_' + path, JSON.stringify(data));
+            }
+        };
+    }
 };
 
-// 初始化Firebase
-let database = null;
-try {
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
-    database = firebase.database();
-    console.log('Firebase初始化成功');
-    showToast('Firebase连接成功');
-} catch (error) {
-    console.error('Firebase初始化失败:', error);
-    showToast('Firebase连接失败，使用本地存储');
-    // 回退到本地存储
-    database = {
-        ref: function(path) {
-            return {
-                once: function(event, callback) {
-                    // 使用公共存储键，确保所有用户都能看到相同的内容
-                    const data = localStorage.getItem('treehole_' + path);
-                    callback({
-                        val: function() {
-                            return data ? JSON.parse(data) : null;
-                        }
-                    });
-                },
-                set: function(data) {
-                    // 使用公共存储键，确保所有用户都能看到相同的内容
-                    localStorage.setItem('treehole_' + path, JSON.stringify(data));
-                }
-            };
-        }
-    };
-}
+// 显示初始化成功提示
+showToast('数据存储初始化成功');
 
 // 初始化
 function init() {
