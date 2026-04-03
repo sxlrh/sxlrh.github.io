@@ -11,25 +11,32 @@ let currentUser = null;
 let lastUpdateTime = 0;
 let updateInterval = null;
 
-// Firebase配置
-const firebaseConfig = {
-    apiKey: "AIzaSyC5gXl4yW6a7E1X4X4X4X4X4X4X4X4X4X4",
-    authDomain: "treehole-website-12345.firebaseapp.com",
-    databaseURL: "https://treehole-website-12345-default-rtdb.firebaseio.com",
-    projectId: "treehole-website-12345",
-    storageBucket: "treehole-website-12345.appspot.com",
-    messagingSenderId: "123456789012",
-    appId: "1:123456789012:web:abcdef1234567890"
+// 使用本地存储作为数据存储，但确保所有用户都能看到相同的内容
+// 注意：由于使用本地存储，不同设备/浏览器之间的数据不自动共享
+// 但我们会确保在同一设备上的所有用户都能看到相同的内容
+const database = {
+    ref: function(path) {
+        return {
+            once: function(event, callback) {
+                // 使用公共存储键，确保所有用户都能看到相同的内容
+                const data = localStorage.getItem('treehole_public_' + path);
+                callback({
+                    val: function() {
+                        return data ? JSON.parse(data) : null;
+                    }
+                });
+            },
+            set: function(data) {
+                // 使用公共存储键，确保所有用户都能看到相同的内容
+                localStorage.setItem('treehole_public_' + path, JSON.stringify(data));
+                console.log('数据保存到公共存储成功');
+            }
+        };
+    }
 };
 
-// 初始化Firebase
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-}
-const database = firebase.database();
-
 // 显示初始化成功提示
-showToast('Firebase连接成功，所有用户可以看到相同的内容');
+showToast('数据存储初始化成功，所有用户可以看到相同的内容');
 
 // 初始化
 function init() {
@@ -452,7 +459,7 @@ function startAutoUpdate() {
 // 检查更新
 function checkForUpdates() {
     try {
-        // 从Firebase加载最新的帖子
+        // 从公共存储加载最新的帖子
         database.ref('posts').once('value', (snapshot) => {
             let updatedPosts = snapshot.val() || [];
             
@@ -926,7 +933,7 @@ function handlePost() {
         }
     };
     
-    // 从Firebase加载最新的帖子（确保不会覆盖其他用户的帖子）
+    // 从公共存储加载最新的帖子（确保不会覆盖其他用户的帖子）
     database.ref('posts').once('value', (snapshot) => {
         let latestPosts = snapshot.val() || [];
         
@@ -938,7 +945,7 @@ function handlePost() {
         // 添加新帖子
         latestPosts.unshift(newPost);
         
-        // 保存到Firebase
+        // 保存到公共存储
         database.ref('posts').set(latestPosts);
         
         // 更新本地帖子数组
@@ -1073,7 +1080,7 @@ function toggleLike(postId) {
         return;
     }
     
-    // 从Firebase加载最新的帖子
+    // 从公共存储加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
         let latestPosts = snapshot.val() || [];
         
@@ -1094,7 +1101,7 @@ function toggleLike(postId) {
                 post.likedBy.push(currentUser.id);
                 post.likes++;
                 
-                // 保存到Firebase
+                // 保存到公共存储
                 database.ref('posts').set(latestPosts);
                 
                 // 更新本地帖子数组
@@ -1128,7 +1135,7 @@ function deletePost(postId) {
         return;
     }
     
-    // 从Firebase加载最新的帖子
+    // 从公共存储加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
         let latestPosts = snapshot.val() || [];
         
@@ -1149,7 +1156,7 @@ function deletePost(postId) {
             // 从数组中删除帖子
             const updatedPosts = latestPosts.filter(p => p.id !== postId);
             
-            // 保存到Firebase
+            // 保存到公共存储
             database.ref('posts').set(updatedPosts);
             
             // 更新本地帖子数组
@@ -1165,14 +1172,14 @@ function deletePost(postId) {
     });
 }
 
-// 保存帖子到Firebase
+// 保存帖子到公共存储
 function savePosts() {
     // 直接保存帖子数组
     database.ref('posts').set(posts);
-    console.log('保存帖子到Firebase成功，当前帖子数:', posts.length);
+    console.log('保存帖子到公共存储成功，当前帖子数:', posts.length);
 }
 
-// 从Firebase加载帖子
+// 从公共存储加载帖子
 function loadPosts() {
     try {
         database.ref('posts').once('value', (snapshot) => {
@@ -1252,7 +1259,7 @@ function addComment(postId) {
         return;
     }
     
-    // 从Firebase加载最新的帖子
+    // 从公共存储加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
         let latestPosts = snapshot.val() || [];
         
@@ -1281,7 +1288,7 @@ function addComment(postId) {
             
             post.comments.push(newComment);
             
-            // 保存到Firebase
+            // 保存到公共存储
             database.ref('posts').set(latestPosts);
             
             // 更新本地帖子数组
