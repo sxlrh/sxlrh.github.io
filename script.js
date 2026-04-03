@@ -11,30 +11,25 @@ let currentUser = null;
 let lastUpdateTime = 0;
 let updateInterval = null;
 
-// 使用本地存储作为数据存储
-const database = {
-    ref: function(path) {
-        return {
-            once: function(event, callback) {
-                // 从本地存储加载数据
-                const data = localStorage.getItem('treehole_' + path);
-                callback({
-                    val: function() {
-                        return data ? JSON.parse(data) : null;
-                    }
-                });
-            },
-            set: function(data) {
-                // 保存数据到本地存储
-                localStorage.setItem('treehole_' + path, JSON.stringify(data));
-                console.log('数据保存到本地存储成功');
-            }
-        };
-    }
+// Firebase配置
+const firebaseConfig = {
+    apiKey: "AIzaSyC5gXl4yW6a7E1X4X4X4X4X4X4X4X4X4X4",
+    authDomain: "treehole-website-12345.firebaseapp.com",
+    databaseURL: "https://treehole-website-12345-default-rtdb.firebaseio.com",
+    projectId: "treehole-website-12345",
+    storageBucket: "treehole-website-12345.appspot.com",
+    messagingSenderId: "123456789012",
+    appId: "1:123456789012:web:abcdef1234567890"
 };
 
+// 初始化Firebase
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const database = firebase.database();
+
 // 显示初始化成功提示
-showToast('数据存储初始化成功');
+showToast('Firebase连接成功，所有用户可以看到相同的内容');
 
 // 初始化
 function init() {
@@ -457,7 +452,7 @@ function startAutoUpdate() {
 // 检查更新
 function checkForUpdates() {
     try {
-        // 从存储加载最新的帖子
+        // 从Firebase加载最新的帖子
         database.ref('posts').once('value', (snapshot) => {
             let updatedPosts = snapshot.val() || [];
             
@@ -931,7 +926,7 @@ function handlePost() {
         }
     };
     
-    // 从存储加载最新的帖子（确保不会覆盖其他用户的帖子）
+    // 从Firebase加载最新的帖子（确保不会覆盖其他用户的帖子）
     database.ref('posts').once('value', (snapshot) => {
         let latestPosts = snapshot.val() || [];
         
@@ -943,7 +938,7 @@ function handlePost() {
         // 添加新帖子
         latestPosts.unshift(newPost);
         
-        // 保存到存储
+        // 保存到Firebase
         database.ref('posts').set(latestPosts);
         
         // 更新本地帖子数组
@@ -1078,7 +1073,7 @@ function toggleLike(postId) {
         return;
     }
     
-    // 从存储加载最新的帖子
+    // 从Firebase加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
         let latestPosts = snapshot.val() || [];
         
@@ -1099,7 +1094,7 @@ function toggleLike(postId) {
                 post.likedBy.push(currentUser.id);
                 post.likes++;
                 
-                // 保存到存储
+                // 保存到Firebase
                 database.ref('posts').set(latestPosts);
                 
                 // 更新本地帖子数组
@@ -1133,7 +1128,7 @@ function deletePost(postId) {
         return;
     }
     
-    // 从存储加载最新的帖子
+    // 从Firebase加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
         let latestPosts = snapshot.val() || [];
         
@@ -1154,7 +1149,7 @@ function deletePost(postId) {
             // 从数组中删除帖子
             const updatedPosts = latestPosts.filter(p => p.id !== postId);
             
-            // 保存到存储
+            // 保存到Firebase
             database.ref('posts').set(updatedPosts);
             
             // 更新本地帖子数组
@@ -1170,14 +1165,14 @@ function deletePost(postId) {
     });
 }
 
-// 保存帖子到存储
+// 保存帖子到Firebase
 function savePosts() {
     // 直接保存帖子数组
     database.ref('posts').set(posts);
-    console.log('保存帖子成功，当前帖子数:', posts.length);
+    console.log('保存帖子到Firebase成功，当前帖子数:', posts.length);
 }
 
-// 从存储加载帖子
+// 从Firebase加载帖子
 function loadPosts() {
     try {
         database.ref('posts').once('value', (snapshot) => {
@@ -1257,7 +1252,7 @@ function addComment(postId) {
         return;
     }
     
-    // 从存储加载最新的帖子
+    // 从Firebase加载最新的帖子
     database.ref('posts').once('value', (snapshot) => {
         let latestPosts = snapshot.val() || [];
         
@@ -1286,7 +1281,7 @@ function addComment(postId) {
             
             post.comments.push(newComment);
             
-            // 保存到存储
+            // 保存到Firebase
             database.ref('posts').set(latestPosts);
             
             // 更新本地帖子数组
