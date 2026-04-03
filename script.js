@@ -2179,8 +2179,8 @@ const originalHandleImageUpload = handleImageUpload;
 handleImageUpload = async function(e) {
     const file = e.target.files[0];
     if (file) {
-        if (file.size > 5 * 1024 * 1024) {
-            showToast('图片不能超过5MB', 'error');
+        if (file.size > 50 * 1024 * 1024) {
+            showToast('图片不能超过50MB', 'error');
             return;
         }
         
