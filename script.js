@@ -401,13 +401,14 @@ async function saveSettings() {
     showLoading(true);
     
     try {
-        const { error } = await supabase
+        // 1. 更新用户表
+        const { error: userError } = await supabase
             .from('users')
             .update({ username, avatar })
             .eq('id', currentUser.id);
         
-        if (error) {
-            if (error.code === '23505') {
+        if (userError) {
+            if (userError.code === '23505') {
                 showToast('用户名已被占用', 'error');
             } else {
                 showToast('保存失败', 'error');
@@ -415,13 +416,33 @@ async function saveSettings() {
             return;
         }
         
+        // 2. 同步更新所有帖子的用户名和头像
+        const { data: userPosts } = await supabase
+            .from('posts')
+            .select('id')
+            .eq('user_id', currentUser.id);
+        
+        if (userPosts && userPosts.length > 0) {
+            // 批量更新帖子
+            for (const post of userPosts) {
+                await supabase
+                    .from('posts')
+                    .update({ username, user_avatar: avatar })
+                    .eq('id', post.id);
+            }
+        }
+        
+        // 3. 更新本地用户信息
         currentUser.username = username;
         currentUser.avatar = avatar;
         localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
         
         updateUserInfo();
         document.getElementById('settings-modal').style.display = 'none';
-        showToast('设置保存成功', 'success');
+        showToast('设置保存成功，已同步更新所有帖子', 'success');
+        
+        // 4. 重新加载帖子
+        await loadPosts();
         
     } catch (error) {
         console.error(error);
@@ -1890,52 +1911,6 @@ function setupUserProfile() {
     document.head.appendChild(style);
 }
 
-window.openUserProfile = async function(userId) {
-    if (!userProfileModal) setupUserProfile();
-    
-    // 获取用户信息
-    const { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
-    if (!user) {
-        showToast('用户不存在', 'error');
-        return;
-    }
-    
-    // 显示用户信息
-    document.getElementById('profile-avatar').src = user.avatar;
-    document.getElementById('profile-name').textContent = user.username;
-    document.getElementById('profile-id').textContent = `ID: ${user.id}`;
-    
-    // 获取用户帖子数
-    const { count: postsCount } = await supabase
-        .from('posts')
-        .select('*', { count: 'exact' })
-        .eq('user_id', userId);
-    
-    document.getElementById('profile-posts-count').textContent = postsCount || 0;
-    
-    // 获取用户获赞数
-    const { data: userPosts } = await supabase
-        .from('posts')
-        .select('id')
-        .eq('user_id', userId);
-    
-    let totalLikes = 0;
-    if (userPosts && userPosts.length > 0) {
-        const postIds = userPosts.map(p => p.id);
-        const { data: likes } = await supabase
-            .from('likes')
-            .select('id')
-            .in('post_id', postIds);
-        totalLikes = likes?.length || 0;
-    }
-    document.getElementById('profile-likes-count').textContent = totalLikes;
-    
-    // 加载用户帖子
-    loadProfilePosts(userId);
-    
-    userProfileModal.style.display = 'block';
-};
-
 window.closeUserProfile = function() {
     if (userProfileModal) {
         userProfileModal.style.display = 'none';
@@ -2833,5 +2808,296 @@ window.addCommentReaction = async function(postId, commentId, reaction) {
         
     } catch (error) {
         console.error('回应失败:', error);
+    }
+};
+
+// ==================== 粉丝关注功能 ====================
+// 关注用户
+window.followUser = async function(userId) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    if (userId === currentUser.id) {
+        showToast('不能关注自己', 'error');
+        return;
+    }
+    
+    try {
+        // 检查是否已关注
+        const { data: existing } = await supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', currentUser.id)
+            .eq('following_id', userId)
+            .single();
+        
+        if (existing) {
+            // 取消关注
+            await supabase
+                .from('follows')
+                .delete()
+                .eq('id', existing.id);
+            showToast('已取消关注', 'success');
+        } else {
+            // 关注
+            await supabase
+                .from('follows')
+                .insert({
+                    follower_id: currentUser.id,
+                    following_id: userId
+                });
+            showToast('关注成功', 'success');
+        }
+        
+        // 刷新用户主页
+        if (document.getElementById('user-profile-modal')?.style.display === 'block') {
+            openUserProfile(userId);
+        }
+        
+    } catch (error) {
+        console.error('关注操作失败:', error);
+        showToast('操作失败', 'error');
+    }
+};
+
+// 检查是否已关注
+async function isFollowing(userId) {
+    if (!currentUser) return false;
+    
+    try {
+        const { data } = await supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', currentUser.id)
+            .eq('following_id', userId)
+            .single();
+        return !!data;
+    } catch {
+        return false;
+    }
+}
+
+// 获取用户粉丝数和关注数
+async function getFollowStats(userId) {
+    try {
+        const [followersRes, followingRes] = await Promise.all([
+            supabase.from('follows').select('id', { count: 'exact' }).eq('following_id', userId),
+            supabase.from('follows').select('id', { count: 'exact' }).eq('follower_id', userId)
+        ]);
+        
+        return {
+            followers: followersRes.count || 0,
+            following: followingRes.count || 0
+        };
+    } catch (error) {
+        console.error('获取关注统计失败:', error);
+        return { followers: 0, following: 0 };
+    }
+}
+
+// 修改用户主页，添加关注功能
+const originalOpenUserProfile = window.openUserProfile;
+window.openUserProfile = async function(userId) {
+    if (!userProfileModal) setupUserProfile();
+    
+    // 获取用户信息
+    const { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
+    if (!user) {
+        showToast('用户不存在', 'error');
+        return;
+    }
+    
+    // 获取关注统计
+    const stats = await getFollowStats(userId);
+    
+    // 检查是否已关注
+    const isFollowed = await isFollowing(userId);
+    
+    // 检查是否是自己
+    const isSelf = currentUser?.id === userId;
+    
+    // 显示用户信息
+    document.getElementById('profile-avatar').src = user.avatar;
+    document.getElementById('profile-name').textContent = user.username;
+    document.getElementById('profile-id').textContent = `ID: ${user.id}`;
+    
+    // 更新统计信息（添加粉丝和关注）
+    document.getElementById('profile-stats').innerHTML = `
+        <span><strong id="profile-posts-count">0</strong> 帖子</span>
+        <span><strong id="profile-followers-count">${stats.followers}</strong> 粉丝</span>
+        <span><strong id="profile-following-count">${stats.following}</strong> 关注</span>
+    `;
+    
+    // 添加关注按钮
+    const profileInfo = document.getElementById('profile-info');
+    const existingFollowBtn = document.getElementById('follow-btn-container');
+    if (existingFollowBtn) existingFollowBtn.remove();
+    
+    if (!isSelf) {
+        const followBtnContainer = document.createElement('div');
+        followBtnContainer.id = 'follow-btn-container';
+        followBtnContainer.innerHTML = `
+            <button onclick="followUser('${userId}')" class="${isFollowed ? 'upload-btn' : 'post-btn'}" style="margin-left:auto;padding:8px 20px;">
+                ${isFollowed ? '已关注' : '+ 关注'}
+            </button>
+        `;
+        profileInfo.appendChild(followBtnContainer);
+    }
+    
+    // 获取用户帖子数
+    const { count: postsCount } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact' })
+        .eq('user_id', userId);
+    
+    document.getElementById('profile-posts-count').textContent = postsCount || 0;
+    
+    // 获取用户获赞数
+    const { data: userPosts } = await supabase
+        .from('posts')
+        .select('id')
+        .eq('user_id', userId);
+    
+    let totalLikes = 0;
+    if (userPosts && userPosts.length > 0) {
+        const postIds = userPosts.map(p => p.id);
+        const { data: likes } = await supabase
+            .from('likes')
+            .select('id')
+            .in('post_id', postIds);
+        totalLikes = likes?.length || 0;
+    }
+    
+    // 加载用户帖子
+    loadProfilePosts(userId);
+    
+    userProfileModal.style.display = 'block';
+};
+
+// 添加粉丝/关注列表查看
+window.showFollowersList = async function(userId) {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>粉丝列表</h3>
+                <span class="close-btn" onclick="this.closest('.modal').remove()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="followers-list" style="max-height: 400px; overflow-y: auto;">
+                    <p style="text-align:center;color:#999;padding:20px;">加载中...</p>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    try {
+        const { data: follows } = await supabase
+            .from('follows')
+            .select('follower_id')
+            .eq('following_id', userId);
+        
+        const container = modal.querySelector('#followers-list');
+        container.innerHTML = '';
+        
+        if (!follows || follows.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无粉丝</p>';
+            return;
+        }
+        
+        // 获取粉丝信息
+        const followerIds = follows.map(f => f.follower_id);
+        const { data: users } = await supabase
+            .from('users')
+            .select('*')
+            .in('id', followerIds);
+        
+        users?.forEach(user => {
+            const div = document.createElement('div');
+            div.className = 'friend-item';
+            div.innerHTML = `
+                <img src="${user.avatar}" style="width:40px;height:40px;border-radius:50%;">
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${user.username}</div>
+                </div>
+            `;
+            div.onclick = () => {
+                modal.remove();
+                openUserProfile(user.id);
+            };
+            container.appendChild(div);
+        });
+        
+    } catch (error) {
+        console.error('加载粉丝失败:', error);
+        modal.querySelector('#followers-list').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
+    }
+};
+
+window.showFollowingList = async function(userId) {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>关注列表</h3>
+                <span class="close-btn" onclick="this.closest('.modal').remove()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="following-list" style="max-height: 400px; overflow-y: auto;">
+                    <p style="text-align:center;color:#999;padding:20px;">加载中...</p>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    try {
+        const { data: follows } = await supabase
+            .from('follows')
+            .select('following_id')
+            .eq('follower_id', userId);
+        
+        const container = modal.querySelector('#following-list');
+        container.innerHTML = '';
+        
+        if (!follows || follows.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无关注</p>';
+            return;
+        }
+        
+        // 获取关注用户信息
+        const followingIds = follows.map(f => f.following_id);
+        const { data: users } = await supabase
+            .from('users')
+            .select('*')
+            .in('id', followingIds);
+        
+        users?.forEach(user => {
+            const div = document.createElement('div');
+            div.className = 'friend-item';
+            div.innerHTML = `
+                <img src="${user.avatar}" style="width:40px;height:40px;border-radius:50%;">
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${user.username}</div>
+                </div>
+            `;
+            div.onclick = () => {
+                modal.remove();
+                openUserProfile(user.id);
+            };
+            container.appendChild(div);
+        });
+        
+    } catch (error) {
+        console.error('加载关注失败:', error);
+        modal.querySelector('#following-list').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
     }
 };
