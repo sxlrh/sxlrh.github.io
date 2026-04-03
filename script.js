@@ -61,12 +61,67 @@ function setupRealtimeSubscription() {
     // 订阅帖子变化
     const postsChannel = supabase
         .channel('posts-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, (payload) => {
+            console.log('帖子变化:', payload.eventType);
+            // 新帖子或帖子更新
+            if (payload.eventType === 'INSERT') {
+                // 新帖子
+                showToast('有新的分享发布了！', 'info');
+            }
             loadPosts();
         })
         .subscribe();
     
-    subscriptions.push(postsChannel);
+    // 订阅点赞变化
+    const likesChannel = supabase
+        .channel('likes-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => {
+            console.log('点赞变化');
+            loadPosts();
+        })
+        .subscribe();
+    
+    subscriptions.push(postsChannel, likesChannel);
+    
+    // 定时轮询（每30秒检查一次更新）
+    window.pollingInterval = setInterval(async () => {
+        // 只在页面可见时轮询
+        if (document.visibilityState === 'visible') {
+            try {
+                const { data: latestPost } = await supabase
+                    .from('posts')
+                    .select('id, created_at')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+                
+                if (latestPost && posts.length > 0) {
+                    const latestTime = new Date(latestPost.created_at).getTime();
+                    const currentLatestTime = new Date(posts[0]?.created_at).getTime();
+                    
+                    if (latestTime > currentLatestTime) {
+                        loadPosts();
+                        showToast('有新内容更新', 'info');
+                    }
+                }
+            } catch (e) {
+                console.error('轮询失败:', e);
+            }
+        }
+    }, 30000); // 30秒
+    
+    // 页面可见性变化时刷新
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            // 页面重新可见时，检查更新
+            loadPosts();
+        }
+    });
+    
+    // 窗口获得焦点时刷新
+    window.addEventListener('focus', () => {
+        loadPosts();
+    });
 }
 
 // ==================== 工具函数 ====================
