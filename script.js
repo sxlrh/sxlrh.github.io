@@ -1280,14 +1280,423 @@ function hideSkeleton() {
     }
 }
 
+// ==================== 草稿自动保存 ====================
+let draftSaveTimeout = null;
+
+function setupDraftAutoSave() {
+    const postText = document.getElementById('post-text');
+    if (!postText) return;
+    
+    // 加载草稿
+    const savedDraft = localStorage.getItem('treehole_draft');
+    if (savedDraft) {
+        postText.value = savedDraft;
+    }
+    
+    // 输入时自动保存（防抖）
+    postText.addEventListener('input', () => {
+        clearTimeout(draftSaveTimeout);
+        draftSaveTimeout = setTimeout(() => {
+            const content = postText.value.trim();
+            if (content) {
+                localStorage.setItem('treehole_draft', content);
+            } else {
+                localStorage.removeItem('treehole_draft');
+            }
+        }, 500);
+    });
+    
+    // 发布成功后清除草稿
+    const originalHandlePost = handlePost;
+    handlePost = async function() {
+        await originalHandlePost();
+        localStorage.removeItem('treehole_draft');
+    };
+}
+
+// ==================== 图片预览增强 ====================
+let imageViewer = null;
+
+function setupImageViewer() {
+    // 创建图片查看器
+    imageViewer = document.createElement('div');
+    imageViewer.id = 'image-viewer';
+    imageViewer.innerHTML = `
+        <div class="image-viewer-overlay" onclick="closeImageViewer()"></div>
+        <div class="image-viewer-content">
+            <img id="viewer-image" src="" alt="预览">
+            <button class="image-viewer-close" onclick="closeImageViewer()">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="image-viewer-actions">
+                <button onclick="zoomImage(1.2)"><i class="fas fa-search-plus"></i></button>
+                <button onclick="zoomImage(0.8)"><i class="fas fa-search-minus"></i></button>
+                <button onclick="resetImageZoom()"><i class="fas fa-expand"></i></button>
+            </div>
+        </div>
+    `;
+    imageViewer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 10000;
+        display: none;
+    `;
+    document.body.appendChild(imageViewer);
+    
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .image-viewer-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+        }
+        .image-viewer-content {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #viewer-image {
+            max-width: 90%;
+            max-height: 90%;
+            transition: transform 0.3s ease;
+        }
+        .image-viewer-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        .image-viewer-close:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+        }
+        .image-viewer-actions {
+            position: absolute;
+            bottom: 30px;
+            display: flex;
+            gap: 15px;
+        }
+        .image-viewer-actions button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+        }
+        .image-viewer-actions button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+window.openImageViewer = function(imgSrc) {
+    if (!imageViewer) setupImageViewer();
+    const img = document.getElementById('viewer-image');
+    img.src = imgSrc;
+    img.style.transform = 'scale(1)';
+    imageViewer.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+};
+
+window.closeImageViewer = function() {
+    if (imageViewer) {
+        imageViewer.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+};
+
+window.zoomImage = function(scale) {
+    const img = document.getElementById('viewer-image');
+    const currentScale = parseFloat(img.dataset.scale || 1);
+    const newScale = Math.max(0.5, Math.min(5, currentScale * scale));
+    img.style.transform = `scale(${newScale})`;
+    img.dataset.scale = newScale;
+};
+
+window.resetImageZoom = function() {
+    const img = document.getElementById('viewer-image');
+    img.style.transform = 'scale(1)';
+    img.dataset.scale = 1;
+};
+
+// 覆盖原来的 toggleImageZoom
+window.toggleImageZoom = function(img) {
+    openImageViewer(img.src);
+};
+
+// ==================== 搜索功能 ====================
+let searchModal = null;
+
+function setupSearch() {
+    // 创建搜索模态框
+    searchModal = document.createElement('div');
+    searchModal.id = 'search-modal';
+    searchModal.className = 'modal';
+    searchModal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>🔍 搜索</h3>
+                <span class="close-btn" onclick="closeSearchModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="search-input" placeholder="搜索帖子内容、话题或用户..." 
+                           style="width:100%;padding:12px 15px;border:2px solid #e0e0e0;border-radius:25px;font-size:1rem;">
+                </div>
+                <div id="search-results" style="max-height: 400px; overflow-y: auto;"></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(searchModal);
+    
+    // 搜索输入事件
+    const searchInput = document.getElementById('search-input');
+    let searchTimeout = null;
+    
+    searchInput?.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            performSearch(e.target.value.trim());
+        }, 300);
+    });
+    
+    // ESC 关闭
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeSearchModal();
+    });
+}
+
+window.openSearchModal = function() {
+    if (!searchModal) setupSearch();
+    searchModal.style.display = 'block';
+    document.getElementById('search-input')?.focus();
+};
+
+window.closeSearchModal = function() {
+    if (searchModal) searchModal.style.display = 'none';
+};
+
+async function performSearch(keyword) {
+    const resultsContainer = document.getElementById('search-results');
+    if (!resultsContainer) return;
+    
+    if (!keyword) {
+        resultsContainer.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">输入关键词开始搜索</p>';
+        return;
+    }
+    
+    resultsContainer.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">搜索中...</p>';
+    
+    try {
+        // 搜索帖子
+        const { data: postsData, error } = await supabase
+            .from('posts')
+            .select('*')
+            .or(`content.ilike.%${keyword}%,username.ilike.%${keyword}%`)
+            .order('created_at', { ascending: false })
+            .limit(20);
+        
+        if (error) throw error;
+        
+        resultsContainer.innerHTML = '';
+        
+        if (!postsData || postsData.length === 0) {
+            resultsContainer.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">未找到相关内容</p>';
+            return;
+        }
+        
+        postsData.forEach(post => {
+            const div = document.createElement('div');
+            div.className = 'search-result-item';
+            div.style.cssText = 'padding:15px;border-bottom:1px solid #e0e0e0;cursor:pointer;transition:background 0.3s ease;';
+            div.innerHTML = `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
+                    <span style="font-weight:600;color:#667eea;">${post.username}</span>
+                </div>
+                <div style="color:#333;font-size:0.9rem;">${escapeHtml(post.content || '').substring(0, 100)}...</div>
+                <div style="color:#999;font-size:0.8rem;margin-top:5px;">${new Date(post.created_at).toLocaleString('zh-CN')}</div>
+            `;
+            div.addEventListener('click', () => {
+                closeSearchModal();
+                // 滚动到该帖子
+                const postElement = document.querySelector(`[data-id="${post.id}"]`);
+                if (postElement) {
+                    postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    postElement.style.boxShadow = '0 0 20px rgba(102, 126, 234, 0.5)';
+                    setTimeout(() => {
+                        postElement.style.boxShadow = '';
+                    }, 2000);
+                }
+            });
+            resultsContainer.appendChild(div);
+        });
+        
+    } catch (error) {
+        console.error('搜索失败:', error);
+        resultsContainer.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">搜索失败，请重试</p>';
+    }
+}
+
+// ==================== 热门话题 ====================
+async function getHotTopics() {
+    const topics = {};
+    
+    posts.forEach(post => {
+        if (!post.content) return;
+        const matches = post.content.match(/#(\S+)/g);
+        if (matches) {
+            matches.forEach(tag => {
+                const topic = tag.substring(1);
+                topics[topic] = (topics[topic] || 0) + 1;
+            });
+        }
+    });
+    
+    // 排序并返回前10个
+    return Object.entries(topics)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+}
+
+function setupHotTopics() {
+    // 在排行榜区域下方添加热门话题
+    const rankingSection = document.querySelector('.content-section:nth-child(2)');
+    if (!rankingSection) return;
+    
+    const topicsSection = document.createElement('section');
+    topicsSection.className = 'content-section';
+    topicsSection.innerHTML = `
+        <h2>🔥 热门话题</h2>
+        <div id="hot-topics-container" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:30px;"></div>
+    `;
+    rankingSection.after(topicsSection);
+    
+    // 更新热门话题
+    updateHotTopics();
+}
+
+async function updateHotTopics() {
+    const container = document.getElementById('hot-topics-container');
+    if (!container) return;
+    
+    const topics = await getHotTopics();
+    
+    if (topics.length === 0) {
+        container.innerHTML = '<p style="color:#999;">暂无热门话题</p>';
+        return;
+    }
+    
+    container.innerHTML = topics.map(([topic, count]) => `
+        <span class="topic-tag" onclick="searchTopic('${topic}')" 
+              style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:8px 16px;border-radius:20px;cursor:pointer;font-size:0.9rem;transition:transform 0.3s ease;">
+            #${topic} <span style="opacity:0.8">(${count})</span>
+        </span>
+    `).join('');
+}
+
+// ==================== 消息通知 ====================
+let notificationBadge = null;
+
+function setupNotifications() {
+    // 在好友按钮旁边添加通知按钮
+    const userInfo = document.getElementById('user-info');
+    if (!userInfo) return;
+    
+    const notifBtn = document.createElement('button');
+    notifBtn.id = 'notification-btn';
+    notifBtn.className = 'upload-btn';
+    notifBtn.style.cssText = 'padding:5px 10px;position:relative;';
+    notifBtn.innerHTML = `<i class="fas fa-bell"></i><span id="notif-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:#ff6b6b;color:white;font-size:0.7rem;padding:2px 6px;border-radius:10px;">0</span>`;
+    notifBtn.onclick = showNotifications;
+    
+    const friendsBtn = document.getElementById('friends-btn');
+    if (friendsBtn) {
+        friendsBtn.before(notifBtn);
+    }
+}
+
+function showUnreadCount(count) {
+    const badge = document.getElementById('notif-badge');
+    if (badge) {
+        if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : count;
+            badge.style.display = 'block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+}
+
+window.showNotifications = function() {
+    showToast('通知功能开发中...', 'info');
+};
+
+// 通知用户
+function notifyUser(type, data) {
+    let message = '';
+    switch (type) {
+        case 'like':
+            message = `${data.username} 赞了你的帖子`;
+            break;
+        case 'comment':
+            message = `${data.username} 评论了你的帖子`;
+            break;
+        case 'follow':
+            message = `${data.username} 关注了你`;
+            break;
+    }
+    
+    if (message) {
+        showToast(message, 'info');
+    }
+}
+
 // ==================== 启动 ====================
 window.addEventListener('DOMContentLoaded', () => {
     init();
     
-    // 延迟设置无限滚动和下拉刷新
+    // 延迟设置各种功能
     setTimeout(() => {
         setupInfiniteScroll();
         setupPullRefresh();
         hideSkeleton();
+        setupDraftAutoSave();
+        setupImageViewer();
+        setupSearch();
+        setupHotTopics();
+        setupNotifications();
     }, 1000);
+});
+
+// 添加搜索快捷键
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        openSearchModal();
+    }
 });
