@@ -1,21 +1,19 @@
-// 文章管理系统
+// 心灵树洞 - 优化版 script.js (Part 1)
+// 修复：并发问题、浏览量循环、用户体验
 
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { getDatabase, ref, onValue, set, get, push, remove, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-// 全局变量
+// ==================== 全局状态 ====================
 let posts = [];
+let currentUser = null;
 let currentImage = null;
 let currentVideo = null;
 let currentVoice = null;
 let mediaRecorder = null;
 let audioChunks = [];
-let currentUser = null;
-let lastUpdateTime = 0;
-let updateInterval = null;
 let database = null;
-let dbRef = null;
+let viewedPosts = new Set(); // 记录已浏览的帖子ID
 
 // Firebase配置
 const firebaseConfig = {
@@ -25,406 +23,177 @@ const firebaseConfig = {
   projectId: "xlsd-f3985",
   storageBucket: "xlsd-f3985.firebasestorage.app",
   messagingSenderId: "728217927193",
-  appId: "1:728217927193:web:4a81b4ca32fe38783eb488",
-  measurementId: "G-8X11WEXLLJ"
+  appId: "1:728217927193:web:4a81b4ca32fe38783eb488"
 };
 
-// 初始化Firebase
+// ==================== 初始化 ====================
 function initFirebase() {
     try {
-        // 初始化Firebase应用
         const app = initializeApp(firebaseConfig);
-        // 获取数据库引用
         database = getDatabase(app);
-        dbRef = ref(database);
         console.log('Firebase初始化成功');
-        showToast('数据存储初始化成功，所有用户可以实时共享内容');
+        return true;
     } catch (error) {
         console.error('Firebase初始化失败:', error);
-        showToast('Firebase初始化失败，将使用本地存储');
-        // 回退到本地存储
-        database = {
-            ref: function(path) {
-                return {
-                    once: function(event, callback) {
-                        const data = localStorage.getItem('treehole_public_' + path);
-                        callback({
-                            val: function() {
-                                return data ? JSON.parse(data) : null;
-                            }
-                        });
-                    },
-                    set: function(data) {
-                        localStorage.setItem('treehole_public_' + path, JSON.stringify(data));
-                        console.log('数据保存到本地存储成功');
-                    },
-                    child: function(childPath) {
-                        return this;
-                    },
-                    on: function(event, callback) {
-                        // 模拟实时监听
-                        setInterval(() => {
-                            const data = localStorage.getItem('treehole_public_' + path);
-                            callback({
-                                val: function() {
-                                    return data ? JSON.parse(data) : null;
-                                }
-                            });
-                        }, 5000);
-                    }
-                };
-            }
-        };
+        showToast('数据存储初始化失败', 'error');
+        return false;
     }
 }
 
-// 显示初始化成功提示
-
-// 初始化
 function init() {
-    // 初始化Firebase
-    initFirebase();
-    // 从本地存储加载用户信息
+    showLoading(true);
+    if (!initFirebase()) { showLoading(false); return; }
     loadUser();
-    // 从Firebase加载帖子
+    updateUserInfo();
     loadPosts();
-    // 渲染帖子
-    renderPosts();
-    // 绑定事件
     bindEvents();
-    // 绑定认证相关事件
     bindAuthEvents();
-    // 启动实时数据监听
     startRealTimeUpdates();
+    setTimeout(() => showRanking('likes'), 500);
 }
 
-// 绑定事件
+// ==================== 事件绑定 ====================
 function bindEvents() {
-    // 发布按钮点击事件
     document.getElementById('post-button').addEventListener('click', handlePost);
-    
-    // 图片上传事件
     document.getElementById('image-upload').addEventListener('change', handleImageUpload);
-    
-    // 视频上传事件
     document.getElementById('video-upload').addEventListener('change', handleVideoUpload);
-    
-    // 语音录制按钮点击事件
     document.getElementById('voice-record').addEventListener('click', toggleVoiceRecord);
 }
 
-// 绑定认证相关事件
 function bindAuthEvents() {
-    // 登录/注册按钮点击事件
     document.getElementById('login-btn').addEventListener('click', showAuthModal);
-    
-    // 关闭模态框按钮点击事件
-    const closeButtons = document.querySelectorAll('.close-btn');
-    closeButtons.forEach(btn => {
-        btn.addEventListener('click', function() {
-            const modal = this.closest('.modal');
-            modal.style.display = 'none';
-        });
+    document.querySelectorAll('.close-btn').forEach(btn => {
+        btn.addEventListener('click', function() { this.closest('.modal').style.display = 'none'; });
     });
-    
-    // 点击模态框外部关闭
-    window.addEventListener('click', function(event) {
-        const modals = document.querySelectorAll('.modal');
-        modals.forEach(modal => {
-            if (event.target === modal) {
-                modal.style.display = 'none';
-            }
-        });
+    window.addEventListener('click', e => {
+        document.querySelectorAll('.modal').forEach(m => { if (e.target === m) m.style.display = 'none'; });
     });
-    
-    // 登录按钮点击事件
     document.getElementById('submit-login').addEventListener('click', login);
-    
-    // 注册按钮点击事件
     document.getElementById('submit-register').addEventListener('click', register);
-    
-    // 微信登录按钮点击事件
-    const wechatBtn = document.querySelector('.wechat-btn');
-    if (wechatBtn) {
-        wechatBtn.addEventListener('click', loginWithWechat);
-    }
-    
-    // QQ登录按钮点击事件
-    const qqBtn = document.querySelector('.qq-btn');
-    if (qqBtn) {
-        qqBtn.addEventListener('click', loginWithQQ);
-    }
-    
-    // 退出按钮点击事件
     document.getElementById('logout-btn').addEventListener('click', logout);
-    
-    // 设置按钮点击事件
     document.getElementById('settings-btn').addEventListener('click', showSettingsModal);
-    
-    // 好友按钮点击事件
     document.getElementById('friends-btn').addEventListener('click', showFriendsModal);
-    
-    // 保存设置按钮点击事件
     document.getElementById('save-settings').addEventListener('click', saveSettings);
-    
-    // 头像上传事件
     document.getElementById('avatar-upload').addEventListener('change', handleAvatarUpload);
-    
-    // 添加好友按钮点击事件
     document.getElementById('add-friend-btn').addEventListener('click', addFriend);
-    
-    // 发送消息按钮点击事件
     document.getElementById('send-message-btn').addEventListener('click', sendMessage);
-    
-    // 聊天输入框回车事件
-    document.getElementById('chat-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    });
-    
-    // 好友搜索事件
-    document.getElementById('friend-search').addEventListener('input', function() {
-        searchFriends(this.value);
-    });
+    document.getElementById('chat-input').addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+    document.getElementById('friend-search').addEventListener('input', function() { searchFriends(this.value); });
 }
 
-// 显示认证模态框
-function showAuthModal() {
-    document.getElementById('auth-modal').style.display = 'block';
+// ==================== 工具函数 ====================
+function showLoading(show) {
+    const loader = document.getElementById('loading-overlay');
+    if (loader) loader.style.display = show ? 'flex' : 'none';
 }
 
-// 隐藏认证模态框
-function hideAuthModal() {
-    document.getElementById('auth-modal').style.display = 'none';
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.classList.add('show'), 100);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
-// 切换登录/注册标签
-function switchAuthTab(tab) {
-    // 切换标签状态
-    const tabs = document.querySelectorAll('.auth-tab');
-    tabs.forEach(t => t.classList.remove('active'));
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ==================== 用户认证 ====================
+function showAuthModal() { document.getElementById('auth-modal').style.display = 'block'; }
+function hideAuthModal() { document.getElementById('auth-modal').style.display = 'none'; }
+
+window.switchAuthTab = function(tab) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
-    
-    // 切换表单显示
-    if (tab === 'login') {
-        document.getElementById('login-form').style.display = 'block';
-        document.getElementById('register-form').style.display = 'none';
-        document.getElementById('modal-title').textContent = '登录';
-    } else {
-        document.getElementById('login-form').style.display = 'none';
-        document.getElementById('register-form').style.display = 'block';
-        document.getElementById('modal-title').textContent = '注册';
-    }
-}
+    document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+    document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
+    document.getElementById('modal-title').textContent = tab === 'login' ? '登录' : '注册';
+};
 
-// 登录
-function login() {
+async function login() {
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value.trim();
+    if (!username || !password) { showToast('请输入用户名和密码', 'error'); return; }
     
-    if (!username || !password) {
-        showToast('请输入用户名和密码');
-        return;
-    }
-    
-    // 从Firebase加载用户数据
-    const usersRef = ref(database, 'users');
-    get(usersRef).then((snapshot) => {
+    showLoading(true);
+    try {
+        const snapshot = await get(ref(database, 'users'));
         const users = snapshot.val() || {};
         const user = Object.values(users).find(u => u.username === username && u.password === password);
-        
         if (user) {
             currentUser = user;
             saveUser();
             updateUserInfo();
             hideAuthModal();
-            showToast('登录成功');
-            // 加载帖子数据
+            showToast('登录成功', 'success');
             loadPosts();
         } else {
-            showToast('用户名或密码错误');
+            showToast('用户名或密码错误', 'error');
         }
-    }).catch((error) => {
+    } catch (error) {
         console.error('登录失败:', error);
-        showToast('登录失败，请检查网络连接');
-    });
+        showToast('登录失败，请检查网络', 'error');
+    } finally { showLoading(false); }
 }
 
-// 注册
-function register() {
+async function register() {
     const username = document.getElementById('register-username').value.trim();
     const password = document.getElementById('register-password').value.trim();
     const confirmPassword = document.getElementById('register-confirm-password').value.trim();
     
-    if (!username || !password || !confirmPassword) {
-        showToast('请填写所有字段');
-        return;
-    }
+    if (!username || !password || !confirmPassword) { showToast('请填写所有字段', 'error'); return; }
+    if (password !== confirmPassword) { showToast('两次密码不一致', 'error'); return; }
+    if (password.length < 6) { showToast('密码至少6位', 'error'); return; }
     
-    if (password !== confirmPassword) {
-        showToast('两次输入的密码不一致');
-        return;
-    }
-    
-    // 从Firebase加载用户数据
-    const usersRef = ref(database, 'users');
-    get(usersRef).then((snapshot) => {
+    showLoading(true);
+    try {
+        const usersRef = ref(database, 'users');
+        const snapshot = await get(usersRef);
         const users = snapshot.val() || {};
         
-        // 检查用户名是否已存在
         if (Object.values(users).some(u => u.username === username)) {
-            showToast('用户名已存在');
+            showToast('用户名已存在', 'error');
+            showLoading(false);
             return;
         }
         
-        // 生成唯一ID
         const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        
-        // 创建新用户
         const newUser = {
-            id: uniqueId,
-            username: username,
-            password: password,
+            id: uniqueId, username, password,
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff`,
             createdAt: new Date().toLocaleString('zh-CN')
         };
         
-        // 保存到Firebase
-            users[uniqueId] = newUser;
-            set(usersRef, users).then(() => {
-                currentUser = newUser;
-                saveUser();
-                updateUserInfo();
-                hideAuthModal();
-                showToast('注册成功，您的用户ID是：' + uniqueId);
-                // 加载帖子数据
-                loadPosts();
-            }).catch((error) => {
-                console.error('注册失败:', error);
-                showToast('注册失败，请检查网络连接');
-            });
-    }).catch((error) => {
+        users[uniqueId] = newUser;
+        await set(usersRef, users);
+        currentUser = newUser;
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('注册成功！ID: ' + uniqueId, 'success');
+    } catch (error) {
         console.error('注册失败:', error);
-        showToast('注册失败，请检查网络连接');
-    });
+        showToast('注册失败，请重试', 'error');
+    } finally { showLoading(false); }
 }
 
-// 微信登录
-function loginWithWechat() {
-    // 模拟微信登录
-    let randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
-    
-    // 从Firebase加载用户数据
-    const usersRef = ref(database, 'users');
-    get(usersRef).then((snapshot) => {
-        const users = snapshot.val() || {};
-        
-        // 检查用户名是否已存在
-        while (Object.values(users).some(u => u.username === randomUsername)) {
-            randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
-        }
-        
-        // 生成唯一ID
-        const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        
-        const newUser = {
-            id: uniqueId,
-            username: randomUsername,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=07C160&color=fff`,
-            createdAt: new Date().toLocaleString('zh-CN')
-        };
-        
-        // 保存到Firebase
-            users[uniqueId] = newUser;
-            set(usersRef, users).then(() => {
-                currentUser = newUser;
-                saveUser();
-                updateUserInfo();
-                hideAuthModal();
-                showToast('微信登录成功，您的用户ID是：' + uniqueId);
-                // 加载帖子数据
-                loadPosts();
-            }).catch((error) => {
-                console.error('微信登录失败:', error);
-                showToast('微信登录失败，请检查网络连接');
-            });
-    }).catch((error) => {
-        console.error('微信登录失败:', error);
-        showToast('微信登录失败，请检查网络连接');
-    });
-}
-
-// QQ登录
-function loginWithQQ() {
-    // 模拟QQ登录
-    let randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
-    
-    // 从Firebase加载用户数据
-    const usersRef = ref(database, 'users');
-    get(usersRef).then((snapshot) => {
-        const users = snapshot.val() || {};
-        
-        // 检查用户名是否已存在
-        while (Object.values(users).some(u => u.username === randomUsername)) {
-            randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
-        }
-        
-        // 生成唯一ID
-        const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        
-        const newUser = {
-            id: uniqueId,
-            username: randomUsername,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=12B7F5&color=fff`,
-            createdAt: new Date().toLocaleString('zh-CN')
-        };
-        
-        // 保存到Firebase
-            users[uniqueId] = newUser;
-            set(usersRef, users).then(() => {
-                currentUser = newUser;
-                saveUser();
-                updateUserInfo();
-                hideAuthModal();
-                showToast('QQ登录成功，您的用户ID是：' + uniqueId);
-                // 加载帖子数据
-                loadPosts();
-            }).catch((error) => {
-                console.error('QQ登录失败:', error);
-                showToast('QQ登录失败，请检查网络连接');
-            });
-    }).catch((error) => {
-        console.error('QQ登录失败:', error);
-        showToast('QQ登录失败，请检查网络连接');
-    });
-}
-
-// 退出登录
 function logout() {
     currentUser = null;
     localStorage.removeItem('treeholeCurrentUser');
     updateUserInfo();
-    alert('已退出登录');
+    showToast('已退出登录', 'success');
 }
 
-// 保存用户信息到本地存储
-function saveUser() {
-    if (currentUser) {
-        localStorage.setItem('treeholeCurrentUser', JSON.stringify(currentUser));
-    }
-}
+function saveUser() { if (currentUser) localStorage.setItem('treeholeCurrentUser', JSON.stringify(currentUser)); }
+function loadUser() { const d = localStorage.getItem('treeholeCurrentUser'); if (d) currentUser = JSON.parse(d); }
 
-// 从本地存储加载用户信息
-function loadUser() {
-    const userData = localStorage.getItem('treeholeCurrentUser');
-    if (userData) {
-        currentUser = JSON.parse(userData);
-        updateUserInfo();
-    }
-}
-
-// 更新用户信息显示
 function updateUserInfo() {
     if (currentUser) {
         document.getElementById('user-info').style.display = 'flex';
@@ -437,7 +206,50 @@ function updateUserInfo() {
     }
 }
 
-// 显示设置模态框
+// 第三方登录
+window.loginWithWechat = async function() {
+    let name = '微信用户' + Math.floor(Math.random() * 10000);
+    showLoading(true);
+    try {
+        const usersRef = ref(database, 'users');
+        const snapshot = await get(usersRef);
+        const users = snapshot.val() || {};
+        while (Object.values(users).some(u => u.username === name)) name = '微信用户' + Math.floor(Math.random() * 10000);
+        
+        const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        users[id] = { id, username: name, avatar: `https://ui-avatars.com/api/?name=${name}&background=07C160&color=fff`, createdAt: new Date().toLocaleString('zh-CN') };
+        await set(usersRef, users);
+        currentUser = users[id];
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('微信登录成功', 'success');
+    } catch (e) { console.error(e); showToast('登录失败', 'error'); }
+    finally { showLoading(false); }
+};
+
+window.loginWithQQ = async function() {
+    let name = 'QQ用户' + Math.floor(Math.random() * 10000);
+    showLoading(true);
+    try {
+        const usersRef = ref(database, 'users');
+        const snapshot = await get(usersRef);
+        const users = snapshot.val() || {};
+        while (Object.values(users).some(u => u.username === name)) name = 'QQ用户' + Math.floor(Math.random() * 10000);
+        
+        const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        users[id] = { id, username: name, avatar: `https://ui-avatars.com/api/?name=${name}&background=12B7F5&color=fff`, createdAt: new Date().toLocaleString('zh-CN') };
+        await set(usersRef, users);
+        currentUser = users[id];
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('QQ登录成功', 'success');
+    } catch (e) { console.error(e); showToast('登录失败', 'error'); }
+    finally { showLoading(false); }
+};
+
+// ==================== 设置 ====================
 function showSettingsModal() {
     if (currentUser) {
         document.getElementById('settings-avatar').src = currentUser.avatar;
@@ -447,207 +259,339 @@ function showSettingsModal() {
     }
 }
 
-// 处理头像上传
 function handleAvatarUpload(e) {
     const file = e.target.files[0];
     if (file) {
+        if (file.size > 2 * 1024 * 1024) { showToast('图片不能超过2MB', 'error'); return; }
         const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('settings-avatar').src = e.target.result;
-        };
+        reader.onload = e => { document.getElementById('settings-avatar').src = e.target.result; };
         reader.readAsDataURL(file);
     }
 }
 
-// 保存设置
-function saveSettings() {
+async function saveSettings() {
     const username = document.getElementById('settings-username').value.trim();
     const avatar = document.getElementById('settings-avatar').src;
+    if (!username) { showToast('请输入用户名', 'error'); return; }
     
-    if (!username) {
-        alert('请输入用户名');
-        return;
-    }
-    
-    // 更新当前用户信息
-    currentUser.username = username;
-    currentUser.avatar = avatar;
-    
-    // 更新本地存储中的用户信息
-    saveUser();
-    
-    // 从Firebase加载用户数据
-    const usersRef = ref(database, 'users');
-    get(usersRef).then((snapshot) => {
+    showLoading(true);
+    try {
+        const usersRef = ref(database, 'users');
+        const snapshot = await get(usersRef);
         const users = snapshot.val() || {};
         
-        // 更新用户信息
-        users[currentUser.id] = currentUser;
+        if (Object.values(users).some(u => u.username === username && u.id !== currentUser.id)) {
+            showToast('用户名已被占用', 'error');
+            showLoading(false);
+            return;
+        }
         
-        // 保存到Firebase
-        set(usersRef, users).then(() => {
-            // 更新界面显示
-            updateUserInfo();
-            
-            // 隐藏模态框
-            document.getElementById('settings-modal').style.display = 'none';
-            
-            showToast('设置保存成功');
-            
-            // 重新渲染帖子，更新用户信息
-            renderPosts();
-            showRanking('likes');
-        }).catch((error) => {
-            console.error('保存设置失败:', error);
-            showToast('保存设置失败，请检查网络连接');
+        currentUser.username = username;
+        currentUser.avatar = avatar;
+        users[currentUser.id] = currentUser;
+        await set(usersRef, users);
+        saveUser();
+        updateUserInfo();
+        document.getElementById('settings-modal').style.display = 'none';
+        showToast('设置保存成功', 'success');
+        renderPosts();
+    } catch (e) { console.error(e); showToast('保存失败', 'error'); }
+    finally { showLoading(false); }
+}
+
+// ==================== 帖子 ====================
+async function loadPosts() {
+    try {
+        const snapshot = await get(ref(database, 'posts'));
+        const data = snapshot.val();
+        if (data) {
+            posts = Array.isArray(data) ? data : Object.values(data);
+            posts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        } else { posts = []; }
+        renderPosts();
+    } catch (e) { console.error(e); showToast('加载失败', 'error'); }
+    finally { showLoading(false); }
+}
+
+function renderPosts() {
+    const container = document.getElementById('posts-container');
+    container.innerHTML = '';
+    if (posts.length === 0) {
+        container.innerHTML = '<p class="no-posts" style="text-align:center;padding:40px;color:#666;">还没有分享，快来发布第一条吧！</p>';
+        return;
+    }
+    posts.forEach(p => container.appendChild(createPostElement(p)));
+}
+
+function createPostElement(post) {
+    const div = document.createElement('div');
+    div.className = 'post-item';
+    div.dataset.id = post.id;
+    
+    // 浏览量（仅首次）
+    if (!viewedPosts.has(post.id)) { viewedPosts.add(post.id); incrementViewCount(post.id); }
+    
+    let media = '';
+    if (post.image) media = `<div class="post-item-media"><img src="${post.image}" alt="图片" onclick="toggleImageZoom(this)" loading="lazy"></div>`;
+    else if (post.video) media = `<div class="post-item-media"><video controls preload="metadata"><source src="${post.video}"></video></div>`;
+    else if (post.voice) media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice}"></audio></div>`;
+    
+    const liked = currentUser && post.likedBy?.includes(currentUser.id);
+    let user = post.user ? `<div class="post-user" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><img src="${post.user.avatar}" style="width:30px;height:30px;border-radius:50%;"><span style="font-weight:600;color:#667eea;">${post.user.username}</span></div>` : '';
+    
+    let comments = '';
+    if (post.comments?.length) {
+        comments = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
+        post.comments.slice(-5).forEach(c => {
+            const cu = c.user ? `<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;"><img src="${c.user.avatar}" style="width:20px;height:20px;border-radius:50%;"><span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.user.username}</span></div>` : '';
+            comments += `<li class="comment-item">${cu}<span class="comment-text">${escapeHtml(c.text)}</span><span class="comment-time">${c.timestamp}</span></li>`;
         });
-    }).catch((error) => {
-        console.error('保存设置失败:', error);
-        showToast('保存设置失败，请检查网络连接');
+        comments += '</ul></div>';
+    }
+    
+    div.innerHTML = `
+        ${user}
+        <div class="post-item-content">${escapeHtml(post.text || '')}</div>
+        ${media}
+        <div class="post-item-meta">
+            <span class="post-time">${post.timestamp} · ${post.views || 0} 浏览</span>
+            <div class="post-item-actions">
+                <button class="action-btn like-btn ${liked ? 'liked' : ''}" data-id="${post.id}"><i class="fas fa-heart"></i> ${post.likes || 0}</button>
+                <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
+            </div>
+        </div>
+        ${comments}
+        <div class="comment-form">
+            <input type="text" class="comment-input" placeholder="写下你的评论..." data-id="${post.id}">
+            <button class="comment-btn" data-id="${post.id}"><i class="fas fa-paper-plane"></i></button>
+        </div>`;
+    
+    div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
+    div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
+    div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
+    return div;
+}
+
+async function incrementViewCount(postId) {
+    try {
+        const postRef = ref(database, `posts/${postId}`);
+        const snap = await get(postRef);
+        if (snap.val()) await update(postRef, { views: (snap.val().views || 0) + 1 });
+    } catch (e) { console.error('浏览量更新失败', e); }
+}
+
+// ==================== 发布 ====================
+function handleImageUpload(e) {
+    const file = e.target.files[0];
+    if (file) {
+        if (file.size > 5 * 1024 * 1024) { showToast('图片不能超过5MB', 'error'); return; }
+        if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) { showToast('只支持JPEG/PNG/GIF/WebP', 'error'); return; }
+        const reader = new FileReader();
+        reader.onload = e => { currentImage = e.target.result; currentVideo = null; currentVoice = null; showToast('图片已选择', 'success'); };
+        reader.readAsDataURL(file);
+    }
+}
+
+function handleVideoUpload(e) {
+    const file = e.target.files[0];
+    if (file) {
+        if (file.size > 20 * 1024 * 1024) { showToast('视频不能超过20MB', 'error'); return; }
+        const reader = new FileReader();
+        reader.onload = e => { currentVideo = e.target.result; currentImage = null; currentVoice = null; showToast('视频已选择', 'success'); };
+        reader.readAsDataURL(file);
+    }
+}
+
+function toggleVoiceRecord() {
+    const btn = document.getElementById('voice-record');
+    if (mediaRecorder?.state === 'recording') {
+        mediaRecorder.stop();
+        btn.innerHTML = '<i class="fas fa-microphone"></i> 语音';
+        btn.style.background = '#f8f9fa';
+        btn.style.color = '#666';
+    } else {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                currentVoice = URL.createObjectURL(blob);
+                currentImage = null; currentVideo = null;
+                showToast('语音录制完成', 'success');
+                stream.getTracks().forEach(t => t.stop());
+            };
+            mediaRecorder.start();
+            btn.innerHTML = '<i class="fas fa-stop"></i> 停止';
+            btn.style.background = '#ff6b6b';
+            btn.style.color = 'white';
+        }).catch(e => { console.error(e); showToast('无法访问麦克风', 'error'); });
+    }
+}
+
+async function handlePost() {
+    const text = document.getElementById('post-text').value.trim();
+    if (!text && !currentImage && !currentVideo && !currentVoice) { showToast('请输入内容', 'error'); return; }
+    if (!currentUser) { showToast('请先登录', 'error'); showAuthModal(); return; }
+    
+    showLoading(true);
+    const newPost = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        text, image: currentImage, video: currentVideo, voice: currentVoice,
+        timestamp: new Date().toLocaleString('zh-CN'),
+        likes: 0, likedBy: [], comments: [], views: 0,
+        user: { id: currentUser.id, username: currentUser.username, avatar: currentUser.avatar }
+    };
+    
+    try {
+        const postsRef = ref(database, 'posts');
+        const snap = await get(postsRef);
+        let all = snap.val() || [];
+        if (!Array.isArray(all)) all = Object.values(all);
+        all.unshift(newPost);
+        await set(postsRef, all);
+        posts = all;
+        renderPosts();
+        document.getElementById('post-text').value = '';
+        currentImage = null; currentVideo = null; currentVoice = null;
+        document.getElementById('image-upload').value = '';
+        document.getElementById('video-upload').value = '';
+        showToast('发布成功', 'success');
+    } catch (e) { console.error(e); showToast('发布失败', 'error'); }
+    finally { showLoading(false); }
+}
+
+// ==================== 互动 ====================
+async function toggleLike(postId) {
+    if (!currentUser) { showToast('请先登录', 'error'); showAuthModal(); return; }
+    try {
+        const postsRef = ref(database, 'posts');
+        const snap = await get(postsRef);
+        let all = snap.val() || [];
+        if (!Array.isArray(all)) all = Object.values(all);
+        const post = all.find(p => p.id === postId);
+        if (!post) return;
+        if (!post.likedBy) post.likedBy = [];
+        
+        if (post.likedBy.includes(currentUser.id)) {
+            post.likedBy = post.likedBy.filter(id => id !== currentUser.id);
+            post.likes = Math.max(0, (post.likes || 0) - 1);
+            showToast('已取消点赞', 'success');
+        } else {
+            post.likedBy.push(currentUser.id);
+            post.likes = (post.likes || 0) + 1;
+            showToast('点赞成功', 'success');
+        }
+        
+        await set(postsRef, all);
+        posts = all;
+        renderPosts();
+    } catch (e) { console.error(e); showToast('操作失败', 'error'); }
+}
+
+async function deletePost(postId) {
+    if (!currentUser) { showToast('请先登录', 'error'); showAuthModal(); return; }
+    const post = posts.find(p => p.id === postId);
+    if (!post?.user || post.user.id !== currentUser.id) { showToast('无权限删除', 'error'); return; }
+    if (!confirm('确定删除？')) return;
+    
+    showLoading(true);
+    try {
+        const postsRef = ref(database, 'posts');
+        const snap = await get(postsRef);
+        let all = snap.val() || [];
+        if (!Array.isArray(all)) all = Object.values(all);
+        all = all.filter(p => p.id !== postId);
+        await set(postsRef, all);
+        posts = all;
+        renderPosts();
+        showToast('删除成功', 'success');
+    } catch (e) { console.error(e); showToast('删除失败', 'error'); }
+    finally { showLoading(false); }
+}
+
+async function addComment(postId) {
+    const input = document.querySelector(`.comment-input[data-id="${postId}"]`);
+    const text = input?.value.trim();
+    if (!text) { showToast('请输入评论', 'error'); return; }
+    if (!currentUser) { showToast('请先登录', 'error'); showAuthModal(); return; }
+    
+    try {
+        const postsRef = ref(database, 'posts');
+        const snap = await get(postsRef);
+        let all = snap.val() || [];
+        if (!Array.isArray(all)) all = Object.values(all);
+        const post = all.find(p => p.id === postId);
+        if (!post) return;
+        if (!post.comments) post.comments = [];
+        
+        post.comments.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            text, timestamp: new Date().toLocaleString('zh-CN'),
+            user: { id: currentUser.id, username: currentUser.username, avatar: currentUser.avatar }
+        });
+        
+        await set(postsRef, all);
+        posts = all;
+        renderPosts();
+        input.value = '';
+        showToast('评论成功', 'success');
+    } catch (e) { console.error(e); showToast('评论失败', 'error'); }
+}
+
+// ==================== 排行榜 ====================
+window.showRanking = function(type) {
+    document.querySelectorAll('.ranking-tab').forEach(t => t.classList.remove('active'));
+    if (event?.target) event.target.classList.add('active');
+    
+    let sorted = [...posts];
+    if (type === 'likes') sorted.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+    else if (type === 'views') sorted.sort((a, b) => (b.views || 0) - (a.views || 0));
+    else if (type === 'comments') sorted.sort((a, b) => (b.comments?.length || 0) - (a.comments?.length || 0));
+    
+    const container = document.getElementById('ranking-container');
+    container.innerHTML = '';
+    if (!sorted.length) { container.innerHTML = '<p style="text-align:center;padding:40px;color:#666;">还没有分享</p>'; return; }
+    
+    sorted.slice(0, 10).forEach((p, i) => {
+        const div = document.createElement('div');
+        div.className = 'post-item';
+        const rankColor = ['#ffd700', '#c0c0c0', '#cd7f32'][i] || '#667eea';
+        const liked = currentUser && p.likedBy?.includes(currentUser.id);
+        const user = p.user ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><img src="${p.user.avatar}" style="width:30px;height:30px;border-radius:50%;"><span style="font-weight:600;color:#667eea;">${p.user.username}</span></div>` : '';
+        
+        div.innerHTML = `
+            <div style="display:flex;align-items:flex-start;gap:15px;">
+                <div style="font-size:1.5rem;font-weight:bold;color:${rankColor};">${i + 1}</div>
+                <div style="flex:1;">
+                    ${user}
+                    <div class="post-item-content">${escapeHtml(p.text || '')}</div>
+                    <div class="post-item-meta">
+                        <span class="post-time">${p.timestamp} · ${p.views || 0} 浏览</span>
+                        <button class="action-btn like-btn ${liked ? 'liked' : ''}" onclick="toggleLike('${p.id}')"><i class="fas fa-heart"></i> ${p.likes || 0}</button>
+                    </div>
+                </div>
+            </div>`;
+        container.appendChild(div);
+    });
+};
+
+// ==================== 实时更新 ====================
+function startRealTimeUpdates() {
+    onValue(ref(database, 'posts'), snap => {
+        const data = snap.val();
+        if (data) {
+            const newPosts = Array.isArray(data) ? data : Object.values(data);
+            newPosts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            if (JSON.stringify(newPosts) !== JSON.stringify(posts)) {
+                posts = newPosts;
+                renderPosts();
+            }
+        }
     });
 }
 
-// 切换图片放大缩小
-function toggleImageZoom(img) {
-    if (img.classList.contains('zoomed')) {
-        img.classList.remove('zoomed');
-        img.style.transform = 'scale(1)';
-        img.style.cursor = 'zoom-in';
-    } else {
-        img.classList.add('zoomed');
-        img.style.transform = 'scale(2)';
-        img.style.cursor = 'zoom-out';
-        img.style.zIndex = '100';
-        img.style.position = 'relative';
-        img.style.transition = 'transform 0.3s ease';
-    }
-}
-
-// 显示操作反馈
-function showToast(message) {
-    // 创建toast元素
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = message;
-    
-    // 添加到页面
-    document.body.appendChild(toast);
-    
-    // 显示toast
-    setTimeout(() => {
-        toast.classList.add('show');
-    }, 100);
-    
-    // 3秒后隐藏toast
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => {
-            document.body.removeChild(toast);
-        }, 300);
-    }, 3000);
-}
-
-// 启动自动更新
-function startAutoUpdate() {
-    // 每3分钟检查一次更新
-    updateInterval = setInterval(() => {
-        checkForUpdates();
-        console.log('自动更新检查触发');
-    }, 180000); // 3分钟 = 180000毫秒
-    console.log('自动更新已启动，每3分钟检查一次');
-}
-
-// 检查更新
-function checkForUpdates() {
-    try {
-        // 从公共存储加载最新的帖子
-        database.ref('posts').once('value', (snapshot) => {
-            let updatedPosts = snapshot.val() || [];
-            
-            // 确保是数组
-            if (!Array.isArray(updatedPosts)) {
-                updatedPosts = Object.values(updatedPosts);
-            }
-            
-            // 检查是否有新内容
-            if (updatedPosts.length !== posts.length) {
-                posts = updatedPosts;
-                renderPosts();
-                showToast('有新内容更新');
-                console.log('检测到新内容，当前帖子数:', posts.length);
-            } else {
-                // 检查是否有内容变化
-                const currentPostsString = JSON.stringify(posts);
-                const updatedPostsString = JSON.stringify(updatedPosts);
-                if (currentPostsString !== updatedPostsString) {
-                    posts = updatedPosts;
-                    renderPosts();
-                    showToast('内容已更新');
-                    console.log('检测到内容变化，已更新');
-                }
-            }
-        });
-    } catch (error) {
-        console.error('检查更新失败:', error);
-    }
-}
-
-// 启动实时数据监听
-function startRealTimeUpdates() {
-    try {
-        console.log('正在启动实时数据监听...');
-        // 监听帖子数据变化
-        const postsRef = ref(database, 'posts');
-        onValue(postsRef, (snapshot) => {
-            console.log('实时更新：收到帖子数据变化');
-            let updatedPosts = snapshot.val() || [];
-            
-            // 确保是数组
-            if (!Array.isArray(updatedPosts)) {
-                updatedPosts = Object.values(updatedPosts);
-            }
-            
-            // 检查是否有新内容
-            if (JSON.stringify(updatedPosts) !== JSON.stringify(posts)) {
-                posts = updatedPosts;
-                renderPosts();
-                showToast('内容已更新');
-                console.log('实时更新：检测到内容变化，更新了', posts.length, '个帖子');
-            }
-        });
-        
-        // 监听用户数据变化
-        const usersRef = ref(database, 'users');
-        onValue(usersRef, (snapshot) => {
-            console.log('实时更新：收到用户数据变化');
-            const users = snapshot.val() || {};
-            // 如果当前用户存在，更新用户信息
-            if (currentUser && users[currentUser.id]) {
-                currentUser = users[currentUser.id];
-                saveUser();
-                updateUserInfo();
-                console.log('实时更新：用户信息已更新');
-            }
-        });
-        
-        console.log('实时数据监听已成功启动');
-    } catch (error) {
-        console.error('启动实时数据监听失败:', error);
-        // 回退到轮询更新
-        console.log('回退到轮询更新');
-        startAutoUpdate();
-    }
-}
-
-// 停止自动更新
-function stopAutoUpdate() {
-    if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
-    }
-}
-
-// 显示好友模态框
+// ==================== 好友系统 ====================
 function showFriendsModal() {
     if (currentUser) {
         document.getElementById('friends-modal').style.display = 'block';
@@ -656,1158 +600,225 @@ function showFriendsModal() {
     }
 }
 
-// 切换好友标签
-function switchFriendsTab(tab) {
-    // 切换标签状态
-    const tabs = document.querySelectorAll('.friends-tab');
-    tabs.forEach(t => t.classList.remove('active'));
+window.switchFriendsTab = function(tab) {
+    document.querySelectorAll('.friends-tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
-    
-    // 切换内容显示
-    const contents = document.querySelectorAll('.friends-content');
-    contents.forEach(c => c.style.display = 'none');
+    document.querySelectorAll('.friends-content').forEach(c => c.style.display = 'none');
     document.getElementById(tab).style.display = 'block';
-    
-    // 加载对应内容
-    if (tab === 'list') {
-        loadFriends();
-    } else if (tab === 'chat') {
-        loadChatFriends();
-    }
-}
+    if (tab === 'list') loadFriends();
+    else if (tab === 'chat') loadChatFriends();
+};
 
-// 加载好友列表
-function loadFriends() {
-    const friendsContainer = document.getElementById('friends-container');
-    friendsContainer.innerHTML = '';
-    
-    // 从Firebase加载好友数据
-    const friendsRef = ref(database, 'friends');
-    get(friendsRef).then((friendsSnapshot) => {
-        const friendsData = friendsSnapshot.val() || {};
-        const friends = friendsData[currentUser.id] || [];
+async function loadFriends() {
+    const container = document.getElementById('friends-container');
+    container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">加载中...</p>';
+    try {
+        const [fSnap, uSnap] = await Promise.all([get(ref(database, 'friends')), get(ref(database, 'users'))]);
+        const friends = fSnap.val()?.[currentUser.id] || [];
+        const users = uSnap.val() || {};
+        container.innerHTML = '';
         
-        if (friends.length === 0) {
-            friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
-            return;
-        }
-        
-        // 从Firebase加载所有用户数据
-        const usersRef = ref(database, 'users');
-        get(usersRef).then((usersSnapshot) => {
-            const users = usersSnapshot.val() || {};
-            
-            friends.forEach(friendId => {
-                const friend = users[friendId];
-                if (friend) {
-                    const friendElement = document.createElement('div');
-                    friendElement.className = 'friend-item';
-                    friendElement.innerHTML = `
-                        <img src="${friend.avatar}" alt="${friend.username}">
-                        <div class="friend-item-info">
-                            <div class="friend-item-name">${friend.username}</div>
-                        </div>
-                        <div class="friend-item-actions">
-                            <button class="upload-btn" onclick="startChat('${friend.id}')" style="padding: 5px 10px;">聊天</button>
-                            <button class="upload-btn" onclick="removeFriend('${friend.id}')" style="padding: 5px 10px;">删除</button>
-                        </div>
-                    `;
-                    friendsContainer.appendChild(friendElement);
-                }
-            });
-        }).catch((error) => {
-            console.error('加载用户数据失败:', error);
-            showToast('加载好友列表失败，请检查网络连接');
-        });
-    }).catch((error) => {
-        console.error('加载好友数据失败:', error);
-        showToast('加载好友列表失败，请检查网络连接');
-    });
-}
-
-// 加载聊天好友列表
-function loadChatFriends() {
-    const chatFriendsList = document.getElementById('chat-friends-list');
-    chatFriendsList.innerHTML = '';
-    
-    // 从Firebase加载好友数据
-    const friendsRef = ref(database, 'friends');
-    get(friendsRef).then((friendsSnapshot) => {
-        const friendsData = friendsSnapshot.val() || {};
-        const friends = friendsData[currentUser.id] || [];
-        
-        if (friends.length === 0) {
-            chatFriendsList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
-            return;
-        }
-        
-        // 从Firebase加载所有用户数据
-        const usersRef = ref(database, 'users');
-        get(usersRef).then((usersSnapshot) => {
-            const users = usersSnapshot.val() || {};
-            
-            friends.forEach(friendId => {
-                const friend = users[friendId];
-                if (friend) {
-                    const friendElement = document.createElement('div');
-                    friendElement.className = 'chat-friend-item';
-                    friendElement.dataset.friendId = friend.id;
-                    friendElement.innerHTML = `
-                        <img src="${friend.avatar}" alt="${friend.username}">
-                        <span>${friend.username}</span>
-                    `;
-                    friendElement.addEventListener('click', function() {
-                        // 移除其他好友的active状态
-                        document.querySelectorAll('.chat-friend-item').forEach(item => {
-                            item.classList.remove('active');
-                        });
-                        // 添加当前好友的active状态
-                        this.classList.add('active');
-                        // 开始聊天
-                        startChat(friend.id);
-                    });
-                    chatFriendsList.appendChild(friendElement);
-                }
-            });
-        }).catch((error) => {
-            console.error('加载用户数据失败:', error);
-            showToast('加载聊天好友列表失败，请检查网络连接');
-        });
-    }).catch((error) => {
-        console.error('加载好友数据失败:', error);
-        showToast('加载聊天好友列表失败，请检查网络连接');
-    });
-}
-
-// 添加好友
-function addFriend() {
-    const input = document.getElementById('add-friend-username').value.trim();
-    
-    if (!input) {
-        alert('请输入好友用户名或用户ID');
-        return;
-    }
-    
-    // 从Firebase加载所有用户数据
-    const usersRef = ref(database, 'users');
-    get(usersRef).then((usersSnapshot) => {
-        const users = usersSnapshot.val() || {};
-        
-        // 查找用户（同时支持用户名和ID）
-        const user = Object.values(users).find(u => (u.username === input || u.id === input) && u.id !== currentUser.id);
-        
-        if (!user) {
-            showToast('未找到该用户');
-            return;
-        }
-        
-        // 从Firebase加载好友数据
-        const friendsRef = ref(database, 'friends');
-        get(friendsRef).then((friendsSnapshot) => {
-            const friendsData = friendsSnapshot.val() || {};
-            const userFriends = friendsData[currentUser.id] || [];
-            
-            // 检查是否已经是好友
-            if (userFriends.includes(user.id)) {
-                showToast('已经是好友了');
-                return;
+        if (!friends.length) { container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">还没有好友</p>'; return; }
+        friends.forEach(id => {
+            const f = users[id];
+            if (f) {
+                const div = document.createElement('div');
+                div.className = 'friend-item';
+                div.innerHTML = `<img src="${f.avatar}"><div class="friend-item-info"><div class="friend-item-name">${f.username}</div></div><div class="friend-item-actions"><button class="upload-btn" onclick="startChat('${f.id}')" style="padding:5px 10px;">聊天</button><button class="upload-btn" onclick="removeFriend('${f.id}')" style="padding:5px 10px;">删除</button></div>`;
+                container.appendChild(div);
             }
-            
-            // 添加好友
-            userFriends.push(user.id);
-            friendsData[currentUser.id] = userFriends;
-            
-            // 保存到Firebase
-            set(friendsRef, friendsData).then(() => {
-                showToast('添加好友成功');
-                document.getElementById('add-friend-username').value = '';
-                loadFriends();
-            }).catch((error) => {
-                console.error('添加好友失败:', error);
-                showToast('添加好友失败，请检查网络连接');
-            });
-        }).catch((error) => {
-            console.error('加载好友数据失败:', error);
-            showToast('添加好友失败，请检查网络连接');
         });
-    }).catch((error) => {
-        console.error('加载用户数据失败:', error);
-        showToast('添加好友失败，请检查网络连接');
-    });
+    } catch (e) { console.error(e); container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">加载失败</p>'; }
 }
 
-// 删除好友
-function removeFriend(friendId) {
-    if (confirm('确定要删除这个好友吗？')) {
-        // 从Firebase加载好友数据
-        const friendsRef = ref(database, 'friends');
-        get(friendsRef).then((friendsSnapshot) => {
-            const friendsData = friendsSnapshot.val() || {};
-            let userFriends = friendsData[currentUser.id] || [];
-            
-            // 删除好友
-            userFriends = userFriends.filter(id => id !== friendId);
-            friendsData[currentUser.id] = userFriends;
-            
-            // 保存到Firebase
-            set(friendsRef, friendsData).then(() => {
-                loadFriends();
-                loadChatFriends();
-                showToast('好友已删除');
-            }).catch((error) => {
-                console.error('删除好友失败:', error);
-                showToast('删除好友失败，请检查网络连接');
-            });
-        }).catch((error) => {
-            console.error('加载好友数据失败:', error);
-            showToast('删除好友失败，请检查网络连接');
-        });
-    }
-}
-
-// 获取好友列表
-function getFriends() {
-    // 从公共存储加载好友数据
-    let friends = [];
-    database.ref('friends').once('value', (snapshot) => {
-        const friendsData = snapshot.val() || {};
-        friends = friendsData[currentUser.id] || [];
-    });
-    return friends;
-}
-
-// 开始聊天
-function startChat(friendId) {
-    // 从Firebase加载所有用户数据
-    const usersRef = ref(database, 'users');
-    get(usersRef).then((snapshot) => {
-        const users = snapshot.val() || {};
-        const friend = users[friendId];
+async function loadChatFriends() {
+    const container = document.getElementById('chat-friends-list');
+    container.innerHTML = '';
+    try {
+        const [fSnap, uSnap] = await Promise.all([get(ref(database, 'friends')), get(ref(database, 'users'))]);
+        const friends = fSnap.val()?.[currentUser.id] || [];
+        const users = uSnap.val() || {};
+        if (!friends.length) { container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">还没有好友</p>'; return; }
         
-        if (friend) {
-            document.getElementById('chat-friend-name').textContent = friend.username;
+        friends.forEach(id => {
+            const f = users[id];
+            if (f) {
+                const div = document.createElement('div');
+                div.className = 'chat-friend-item';
+                div.dataset.friendId = f.id;
+                div.innerHTML = `<img src="${f.avatar}"><span>${f.username}</span>`;
+                div.onclick = function() {
+                    document.querySelectorAll('.chat-friend-item').forEach(i => i.classList.remove('active'));
+                    this.classList.add('active');
+                    startChat(f.id);
+                };
+                container.appendChild(div);
+            }
+        });
+    } catch (e) { console.error(e); }
+}
+
+async function addFriend() {
+    const input = document.getElementById('add-friend-username').value.trim();
+    if (!input) { showToast('请输入用户名或ID', 'error'); return; }
+    
+    try {
+        const uSnap = await get(ref(database, 'users'));
+        const users = uSnap.val() || {};
+        const user = Object.values(users).find(u => (u.username === input || u.id === input) && u.id !== currentUser.id);
+        if (!user) { showToast('未找到该用户', 'error'); return; }
+        
+        const fSnap = await get(ref(database, 'friends'));
+        const friends = fSnap.val() || {};
+        const myFriends = friends[currentUser.id] || [];
+        if (myFriends.includes(user.id)) { showToast('已经是好友', 'error'); return; }
+        
+        myFriends.push(user.id);
+        friends[currentUser.id] = myFriends;
+        await set(ref(database, 'friends'), friends);
+        showToast('添加成功', 'success');
+        document.getElementById('add-friend-username').value = '';
+        loadFriends();
+    } catch (e) { console.error(e); showToast('添加失败', 'error'); }
+}
+
+window.removeFriend = async function(id) {
+    if (!confirm('确定删除此好友？')) return;
+    try {
+        const fSnap = await get(ref(database, 'friends'));
+        const friends = fSnap.val() || {};
+        friends[currentUser.id] = (friends[currentUser.id] || []).filter(i => i !== id);
+        await set(ref(database, 'friends'), friends);
+        loadFriends();
+        loadChatFriends();
+        showToast('已删除好友', 'success');
+    } catch (e) { console.error(e); showToast('删除失败', 'error'); }
+};
+
+window.startChat = function(friendId) {
+    get(ref(database, 'users')).then(snap => {
+        const users = snap.val() || {};
+        const f = users[friendId];
+        if (f) {
+            document.getElementById('chat-friend-name').textContent = f.username;
             loadChatMessages(friendId);
         }
-    }).catch((error) => {
-        console.error('加载用户数据失败:', error);
-        showToast('加载聊天信息失败，请检查网络连接');
     });
-}
+};
 
-// 加载聊天消息
-function loadChatMessages(friendId) {
-    const chatMessages = document.getElementById('chat-messages');
-    chatMessages.innerHTML = '';
-    
-    // 从Firebase加载聊天记录
-    const chatKey = 'chat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
-    const chatRef = ref(database, 'chats/' + chatKey);
-    get(chatRef).then((snapshot) => {
-        const messages = snapshot.val() || [];
-        
-        messages.forEach(message => {
-            const messageElement = document.createElement('div');
-            messageElement.className = 'chat-message' + (message.senderId === currentUser.id ? ' self' : '');
-            messageElement.innerHTML = `
-                <div class="chat-message-content">${message.content}</div>
-                <div class="chat-message-time">${message.timestamp}</div>
-            `;
-            chatMessages.appendChild(messageElement);
+async function loadChatMessages(friendId) {
+    const container = document.getElementById('chat-messages');
+    container.innerHTML = '';
+    const key = 'chat_' + [currentUser.id, friendId].sort().join('_');
+    try {
+        const snap = await get(ref(database, 'chats/' + key));
+        const msgs = snap.val() || [];
+        msgs.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'chat-message' + (m.senderId === currentUser.id ? ' self' : '');
+            div.innerHTML = `<div class="chat-message-content">${escapeHtml(m.content)}</div><div class="chat-message-time">${m.timestamp}</div>`;
+            container.appendChild(div);
         });
-        
-        // 滚动到底部
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }).catch((error) => {
-        console.error('加载聊天消息失败:', error);
-        showToast('加载聊天消息失败，请检查网络连接');
-    });
+        container.scrollTop = container.scrollHeight;
+    } catch (e) { console.error(e); }
 }
 
-// 搜索好友
-function searchFriends(keyword) {
-    const friendsContainer = document.getElementById('friends-container');
-    friendsContainer.innerHTML = '';
+async function sendMessage() {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
     
-    // 从Firebase加载好友数据
-    const friendsRef = ref(database, 'friends');
-    get(friendsRef).then((friendsSnapshot) => {
-        const friendsData = friendsSnapshot.val() || {};
-        const friends = friendsData[currentUser.id] || [];
-        
-        if (friends.length === 0) {
-            friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
-            return;
-        }
-        
-        // 从Firebase加载所有用户数据
-        const usersRef = ref(database, 'users');
-        get(usersRef).then((usersSnapshot) => {
-            const users = usersSnapshot.val() || {};
-            
-            // 过滤好友
-            const filteredFriends = friends.filter(friendId => {
-                const friend = users[friendId];
-                return friend && (friend.username.toLowerCase().includes(keyword.toLowerCase()) || friend.id.includes(keyword));
-            });
-            
-            if (filteredFriends.length === 0) {
-                friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">未找到匹配的好友</p>';
-                return;
-            }
-            
-            filteredFriends.forEach(friendId => {
-                const friend = users[friendId];
-                if (friend) {
-                    const friendElement = document.createElement('div');
-                    friendElement.className = 'friend-item';
-                    friendElement.innerHTML = `
-                        <img src="${friend.avatar}" alt="${friend.username}">
-                        <div class="friend-item-info">
-                            <div class="friend-item-name">${friend.username}</div>
-                            <div style="font-size: 0.8rem; color: #999;">ID: ${friend.id}</div>
-                        </div>
-                        <div class="friend-item-actions">
-                            <button class="upload-btn" onclick="startChat('${friend.id}')" style="padding: 5px 10px;">聊天</button>
-                            <button class="upload-btn" onclick="removeFriend('${friend.id}')" style="padding: 5px 10px;">删除</button>
-                        </div>
-                    `;
-                    friendsContainer.appendChild(friendElement);
-                }
-            });
-        }).catch((error) => {
-            console.error('加载用户数据失败:', error);
-            showToast('搜索好友失败，请检查网络连接');
-        });
-    }).catch((error) => {
-        console.error('加载好友数据失败:', error);
-        showToast('搜索好友失败，请检查网络连接');
-    });
-}
-
-// 发送消息
-function sendMessage() {
-    const chatInput = document.getElementById('chat-input');
-    const content = chatInput.value.trim();
-    
-    if (!content) {
-        return;
-    }
-    
-    // 获取当前聊天的好友
     const activeFriend = document.querySelector('.chat-friend-item.active');
-    if (!activeFriend) {
-        showToast('请选择一个好友开始聊天');
-        return;
-    }
+    if (!activeFriend) { showToast('请选择好友', 'error'); return; }
     
     const friendId = activeFriend.dataset.friendId;
+    const key = 'chat_' + [currentUser.id, friendId].sort().join('_');
     
-    // 创建消息
-    const message = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        senderId: currentUser.id,
-        content: content,
-        timestamp: new Date().toLocaleString('zh-CN')
-    };
-    
-    // 保存消息到Firebase
-    const chatKey = 'chat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
-    const chatRef = ref(database, 'chats/' + chatKey);
-    get(chatRef).then((snapshot) => {
-        const messages = snapshot.val() || [];
-        messages.push(message);
-        set(chatRef, messages).then(() => {
-            // 清空输入框
-            chatInput.value = '';
-            
-            // 重新加载消息
-            loadChatMessages(friendId);
-            
-            // 显示发送成功提示
-            showToast('消息发送成功');
-        }).catch((error) => {
-            console.error('发送消息失败:', error);
-            showToast('发送消息失败，请检查网络连接');
-        });
-    }).catch((error) => {
-        console.error('加载聊天记录失败:', error);
-        showToast('发送消息失败，请检查网络连接');
-    });
-}
-
-// 处理图片上传
-function handleImageUpload(e) {
-    const file = e.target.files[0];
-    if (file) {
-        // 检查文件大小（限制为50MB）
-        if (file.size > 50 * 1024 * 1024) {
-            showToast('图片大小不能超过50MB');
-            return;
-        }
-        
-        // 检查文件类型
-        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if (!validTypes.includes(file.type)) {
-            showToast('只支持JPEG、PNG、GIF和WebP格式的图片');
-            return;
-        }
-        
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            currentImage = e.target.result;
-            currentVideo = null; // 清除视频
-            currentVoice = null; // 清除语音
-            showToast('图片已选择');
-        };
-        
-        reader.onerror = function() {
-            showToast('图片读取失败，请重试');
-        };
-        
-        reader.readAsDataURL(file);
-    }
-}
-
-// 处理视频上传
-function handleVideoUpload(e) {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            currentVideo = e.target.result;
-            currentImage = null; // 清除图片
-            currentVoice = null; // 清除语音
-            alert('视频已选择');
-        };
-        reader.readAsDataURL(file);
-    }
-}
-
-// 切换语音录制状态
-function toggleVoiceRecord() {
-    const recordButton = document.getElementById('voice-record');
-    
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        // 停止录制
-        mediaRecorder.stop();
-        recordButton.innerHTML = '<i class="fas fa-microphone"></i> 语音';
-        recordButton.style.background = '#f8f9fa';
-        recordButton.style.color = '#666';
-    } else {
-        // 开始录制
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-                
-                mediaRecorder.ondataavailable = function(e) {
-                    audioChunks.push(e.data);
-                };
-                
-                mediaRecorder.onstop = function() {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    currentVoice = audioUrl;
-                    currentImage = null; // 清除图片
-                    currentVideo = null; // 清除视频
-                    alert('语音录制完成');
-                    
-                    // 停止媒体流
-                    stream.getTracks().forEach(track => track.stop());
-                };
-                
-                mediaRecorder.start();
-                recordButton.innerHTML = '<i class="fas fa-stop"></i> 停止';
-                recordButton.style.background = '#ff6b6b';
-                recordButton.style.color = 'white';
-            })
-            .catch(err => {
-                console.error('无法访问麦克风:', err);
-                alert('无法访问麦克风，请检查权限设置');
-            });
-    }
-}
-
-// 处理发布
-function handlePost() {
-    const text = document.getElementById('post-text').value.trim();
-    
-    if (!text && !currentImage && !currentVideo && !currentVoice) {
-        showToast('请输入内容或上传媒体');
-        return;
-    }
-    
-    // 确保用户已登录
-    if (!currentUser) {
-        showToast('请先登录');
-        showAuthModal();
-        return;
-    }
-    
-    // 显示发布中提示
-    showToast('发布中，请稍候...');
-    
-    // 创建新帖子
-    const newPost = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        text: text,
-        image: currentImage,
-        video: currentVideo,
-        voice: currentVoice,
-        timestamp: new Date().toLocaleString('zh-CN'),
-        likes: 0,
-        likedBy: [],
-        comments: [],
-        views: 0,
-        user: {
-            id: currentUser.id,
-            username: currentUser.username,
-            avatar: currentUser.avatar
-        }
-    };
-    
-    // 先保存到本地存储作为备份
-    const localPosts = localStorage.getItem('treehole_public_posts');
-    let latestPosts = [];
-    if (localPosts) {
-        latestPosts = JSON.parse(localPosts);
-    }
-    latestPosts.unshift(newPost);
-    localStorage.setItem('treehole_public_posts', JSON.stringify(latestPosts));
-    
-    // 从Firebase加载最新的帖子（确保不会覆盖其他用户的帖子）
-    const postsRef = ref(database, 'posts');
-    get(postsRef).then((snapshot) => {
-        let firebasePosts = snapshot.val() || [];
-        
-        // 确保是数组
-        if (!Array.isArray(firebasePosts)) {
-            firebasePosts = Object.values(firebasePosts);
-        }
-        
-        // 添加新帖子
-        firebasePosts.unshift(newPost);
-        
-        // 保存到Firebase
-        set(postsRef, firebasePosts).then(() => {
-            // 更新本地帖子数组
-            posts = firebasePosts;
-            
-            // 渲染帖子
-            renderPosts();
-            
-            // 清空表单
-            document.getElementById('post-text').value = '';
-            currentImage = null;
-            currentVideo = null;
-            currentVoice = null;
-            document.getElementById('image-upload').value = '';
-            document.getElementById('video-upload').value = '';
-            
-            // 显示发布成功提示
-            showToast('发布成功');
-            console.log('发布成功，当前帖子数:', posts.length);
-        }).catch((error) => {
-            console.error('发布帖子失败:', error);
-            // 即使Firebase失败，也使用本地存储的数据
-            posts = latestPosts;
-            renderPosts();
-            showToast('发布到云端失败，但已保存到本地');
-            // 清空表单
-            document.getElementById('post-text').value = '';
-            currentImage = null;
-            currentVideo = null;
-            currentVoice = null;
-            document.getElementById('image-upload').value = '';
-            document.getElementById('video-upload').value = '';
-        });
-    }).catch((error) => {
-        console.error('加载帖子失败:', error);
-        // 即使Firebase失败，也使用本地存储的数据
-        posts = latestPosts;
-        renderPosts();
-        showToast('发布到云端失败，但已保存到本地');
-        // 清空表单
-        document.getElementById('post-text').value = '';
-        currentImage = null;
-        currentVideo = null;
-        currentVoice = null;
-        document.getElementById('image-upload').value = '';
-        document.getElementById('video-upload').value = '';
-    });
-}
-
-// 渲染帖子
-function renderPosts() {
-    const container = document.getElementById('posts-container');
-    container.innerHTML = '';
-    
-    if (posts.length === 0) {
-        container.innerHTML = '<p class="no-posts">还没有分享，快来发布第一条吧！</p>';
-        return;
-    }
-    
-    posts.forEach(post => {
-        const postElement = createPostElement(post);
-        container.appendChild(postElement);
-    });
-}
-
-// 创建帖子元素
-function createPostElement(post) {
-    const postDiv = document.createElement('div');
-    postDiv.className = 'post-item';
-    postDiv.dataset.id = post.id;
-    
-    // 增加浏览次数
-    if (!post.views) {
-        post.views = 0;
-    }
-    post.views++;
-    savePosts();
-    
-    let mediaHtml = '';
-    if (post.image) {
-        mediaHtml = `<div class="post-item-media"><img src="${post.image}" alt="图片" onclick="toggleImageZoom(this)"></div>`;
-    } else if (post.video) {
-        mediaHtml = `<div class="post-item-media"><video controls><source src="${post.video}" type="video/mp4">您的浏览器不支持视频播放</video></div>`;
-    } else if (post.voice) {
-        mediaHtml = `<div class="post-item-media"><audio controls><source src="${post.voice}" type="audio/wav">您的浏览器不支持音频播放</div>`;
-    }
-    
-    // 检查用户是否已点赞
-    let userId = localStorage.getItem('treeholeUserId');
-    if (!userId) {
-        userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('treeholeUserId', userId);
-    }
-    
-    const isLiked = post.likedBy && post.likedBy.includes(userId);
-    const likeButtonClass = isLiked ? 'action-btn like-btn liked' : 'action-btn like-btn';
-    
-    // 渲染评论
-    let commentsHtml = '';
-    if (post.comments && post.comments.length > 0) {
-        commentsHtml = `<div class="post-comments">
-            <h4>评论 (${post.comments.length})</h4>
-            <ul class="comments-list">`;
-        post.comments.forEach(comment => {
-            // 评论用户信息
-        let commentUserHtml = '';
-        if (comment.user) {
-            commentUserHtml = `<div class="comment-user" style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
-                <img src="${comment.user.avatar}" alt="${comment.user.username}" style="width: 20px; height: 20px; border-radius: 50%;">
-                <span style="font-weight: 600; font-size: 0.8rem; color: #667eea;">${comment.user.username}</span>
-            </div>`;
-        }
-        
-        commentsHtml += `<li class="comment-item">
-                ${commentUserHtml}
-                <span class="comment-text">${comment.text}</span>
-                <span class="comment-time">${comment.timestamp}</span>
-            </li>`;
-        });
-        commentsHtml += `</ul></div>`;
-    }
-    
-    // 用户信息
-    let userHtml = '';
-    if (post.user) {
-        userHtml = `<div class="post-user" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <img src="${post.user.avatar}" alt="${post.user.username}" class="user-avatar" style="width: 30px; height: 30px;">
-            <span class="user-name" style="font-weight: 600; color: #667eea;">${post.user.username}</span>
-        </div>`;
-    }
-    
-    postDiv.innerHTML = `
-        ${userHtml}
-        <div class="post-item-content">${post.text || ''}</div>
-        ${mediaHtml}
-        <div class="post-item-meta">
-            <span class="post-time">${post.timestamp} · ${post.views} 浏览</span>
-            <div class="post-item-actions">
-                <button class="${likeButtonClass}" data-post-id="${post.id}"><i class="fas fa-heart"></i> <span>${post.likes}</span></button>
-                <button class="action-btn delete-btn" data-post-id="${post.id}"><i class="fas fa-trash"></i> 删除</button>
-            </div>
-        </div>
-        ${commentsHtml}
-        <div class="comment-form">
-            <input type="text" class="comment-input" placeholder="写下你的评论..." data-post-id="${post.id}">
-            <button class="comment-btn" data-post-id="${post.id}"><i class="fas fa-paper-plane"></i></button>
-        </div>
-    `;
-    
-    // 添加事件监听器
-    const likeButton = postDiv.querySelector('.like-btn');
-    if (likeButton) {
-        likeButton.addEventListener('click', function() {
-            const postId = this.dataset.postId;
-            toggleLike(postId);
-        });
-    }
-    
-    const deleteButton = postDiv.querySelector('.delete-btn');
-    if (deleteButton) {
-        deleteButton.addEventListener('click', function() {
-            const postId = this.dataset.postId;
-            deletePost(postId);
-        });
-    }
-    
-    const commentButton = postDiv.querySelector('.comment-btn');
-    if (commentButton) {
-        commentButton.addEventListener('click', function() {
-            const postId = this.dataset.postId;
-            addComment(postId);
-        });
-    }
-    
-    return postDiv;
-}
-
-// 切换点赞
-function toggleLike(postId) {
-    // 确保用户已登录
-    if (!currentUser) {
-        showToast('请先登录');
-        showAuthModal();
-        return;
-    }
-    
-    // 从Firebase加载最新的帖子
-    const postsRef = ref(database, 'posts');
-    get(postsRef).then((snapshot) => {
-        let latestPosts = snapshot.val() || [];
-        
-        // 确保是数组
-        if (!Array.isArray(latestPosts)) {
-            latestPosts = Object.values(latestPosts);
-        }
-        
-        const post = latestPosts.find(p => p.id === postId);
-        
-        if (post) {
-            // 检查是否已经点过赞
-            if (!post.likedBy) {
-                post.likedBy = [];
-            }
-            
-            if (!post.likedBy.includes(currentUser.id)) {
-                post.likedBy.push(currentUser.id);
-                post.likes++;
-                
-                // 保存到Firebase
-                set(postsRef, latestPosts).then(() => {
-                    // 更新本地帖子数组
-                    posts = latestPosts;
-                    
-                    // 渲染帖子
-                    renderPosts();
-                    
-                    // 更新点赞榜
-                    const activeTab = document.querySelector('.ranking-tab.active');
-                    if (activeTab && activeTab.textContent.includes('点赞')) {
-                        showRanking('likes');
-                    }
-                    
-                    // 显示点赞成功提示
-                    showToast('点赞成功');
-                    console.log('点赞成功，当前点赞数:', post.likes);
-                }).catch((error) => {
-                    console.error('点赞失败:', error);
-                    showToast('点赞失败，请检查网络连接');
-                });
-            } else {
-                showToast('你已经点过赞了');
-            }
-        }
-    }).catch((error) => {
-        console.error('加载帖子失败:', error);
-        showToast('点赞失败，请检查网络连接');
-    });
-}
-
-// 删除帖子
-function deletePost(postId) {
-    // 确保用户已登录
-    if (!currentUser) {
-        showToast('请先登录');
-        showAuthModal();
-        return;
-    }
-    
-    // 从Firebase加载最新的帖子
-    const postsRef = ref(database, 'posts');
-    get(postsRef).then((snapshot) => {
-        let latestPosts = snapshot.val() || [];
-        
-        // 确保是数组
-        if (!Array.isArray(latestPosts)) {
-            latestPosts = Object.values(latestPosts);
-        }
-        
-        const post = latestPosts.find(p => p.id === postId);
-        
-        // 检查是否是帖子的作者
-        if (!post || !post.user || post.user.id !== currentUser.id) {
-            showToast('你没有权限删除这条帖子');
-            return;
-        }
-        
-        if (confirm('确定要删除这条分享吗？')) {
-            // 从数组中删除帖子
-            const updatedPosts = latestPosts.filter(p => p.id !== postId);
-            
-            // 保存到Firebase
-            set(postsRef, updatedPosts).then(() => {
-                // 更新本地帖子数组
-                posts = updatedPosts;
-                
-                // 渲染帖子
-                renderPosts();
-                
-                // 显示删除成功提示
-                showToast('删除成功');
-                console.log('删除成功，剩余帖子数:', posts.length);
-            }).catch((error) => {
-                console.error('删除帖子失败:', error);
-                showToast('删除帖子失败，请检查网络连接');
-            });
-        }
-    }).catch((error) => {
-        console.error('加载帖子失败:', error);
-        showToast('删除帖子失败，请检查网络连接');
-    });
-}
-
-// 保存帖子到Firebase
-function savePosts() {
-    // 先保存到本地存储作为备份
-    localStorage.setItem('treehole_public_posts', JSON.stringify(posts));
-    console.log('保存帖子到本地存储成功，当前帖子数:', posts.length);
-    
-    // 然后保存到Firebase
-    const postsRef = ref(database, 'posts');
-    set(postsRef, posts).then(() => {
-        console.log('保存帖子到Firebase成功，当前帖子数:', posts.length);
-    }).catch((error) => {
-        console.error('保存帖子到Firebase失败:', error);
-        showToast('保存到云端失败，但已保存到本地');
-    });
-}
-
-// 从Firebase加载帖子
-function loadPosts() {
     try {
-        const postsRef = ref(database, 'posts');
-        get(postsRef).then((snapshot) => {
-            const storedPosts = snapshot.val();
-            if (storedPosts) {
-                // 确保posts是数组
-                if (Array.isArray(storedPosts)) {
-                    posts = storedPosts;
-                } else {
-                    posts = Object.values(storedPosts);
-                }
-                console.log('加载到', posts.length, '个帖子');
-            } else {
-                // 初始化空帖子数组
-                posts = [];
-                set(postsRef, []);
-                console.log('初始化空帖子数组');
-            }
-            // 渲染帖子
-            renderPosts();
-        }).catch((error) => {
-            console.error('加载帖子失败:', error);
-            showToast('加载帖子失败，将尝试从本地存储加载');
-            // 回退到本地存储
-            const localPosts = localStorage.getItem('treehole_public_posts');
-            if (localPosts) {
-                posts = JSON.parse(localPosts);
-                renderPosts();
-                console.log('从本地存储加载到', posts.length, '个帖子');
+        const snap = await get(ref(database, 'chats/' + key));
+        const msgs = snap.val() || [];
+        msgs.push({
+            id: Date.now().toString(),
+            senderId: currentUser.id,
+            content: text,
+            timestamp: new Date().toLocaleString('zh-CN')
+        });
+        await set(ref(database, 'chats/' + key), msgs);
+        input.value = '';
+        loadChatMessages(friendId);
+    } catch (e) { console.error(e); showToast('发送失败', 'error'); }
+}
+
+async function searchFriends(keyword) {
+    const container = document.getElementById('friends-container');
+    container.innerHTML = '';
+    if (!keyword) { loadFriends(); return; }
+    
+    try {
+        const [fSnap, uSnap] = await Promise.all([get(ref(database, 'friends')), get(ref(database, 'users'))]);
+        const friends = fSnap.val()?.[currentUser.id] || [];
+        const users = uSnap.val() || {};
+        
+        const filtered = friends.filter(id => {
+            const f = users[id];
+            return f && (f.username.toLowerCase().includes(keyword.toLowerCase()) || f.id.includes(keyword));
+        });
+        
+        if (!filtered.length) { container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">未找到匹配的好友</p>'; return; }
+        
+        filtered.forEach(id => {
+            const f = users[id];
+            if (f) {
+                const div = document.createElement('div');
+                div.className = 'friend-item';
+                div.innerHTML = `<img src="${f.avatar}"><div class="friend-item-info"><div class="friend-item-name">${f.username}</div><div style="font-size:0.8rem;color:#999;">ID: ${f.id}</div></div><div class="friend-item-actions"><button class="upload-btn" onclick="startChat('${f.id}')" style="padding:5px 10px;">聊天</button><button class="upload-btn" onclick="removeFriend('${f.id}')" style="padding:5px 10px;">删除</button></div>`;
+                container.appendChild(div);
             }
         });
-    } catch (error) {
-        console.error('加载帖子失败:', error);
-        showToast('加载帖子失败，将尝试从本地存储加载');
-        // 回退到本地存储
-        const localPosts = localStorage.getItem('treehole_public_posts');
-        if (localPosts) {
-            posts = JSON.parse(localPosts);
-            renderPosts();
-            console.log('从本地存储加载到', posts.length, '个帖子');
-        }
-    }
+    } catch (e) { console.error(e); }
 }
 
-// 导出数据
-function exportData() {
-    const dataStr = JSON.stringify(posts);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'treehole-data.json';
-    link.click();
-}
+// ==================== 导入导出 ====================
+window.exportData = function() {
+    const data = JSON.stringify(posts, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'treehole-data.json';
+    a.click();
+    URL.revokeObjectURL(url);
+};
 
-// 导入数据
-function importData(e) {
+window.importData = function(e) {
     const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const importedPosts = JSON.parse(e.target.result);
-                if (Array.isArray(importedPosts)) {
-                    posts = importedPosts;
-                    savePosts();
-                    renderPosts();
-                    alert('数据导入成功');
-                } else {
-                    alert('无效的数据格式');
-                }
-            } catch (error) {
-                alert('数据导入失败');
-            }
-        };
-        reader.readAsText(file);
-    }
-}
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const imported = JSON.parse(e.target.result);
+            if (!Array.isArray(imported)) { showToast('格式无效', 'error'); return; }
+            await set(ref(database, 'posts'), imported);
+            posts = imported;
+            renderPosts();
+            showToast('导入成功', 'success');
+        } catch (err) { console.error(err); showToast('导入失败', 'error'); }
+    };
+    reader.readAsText(file);
+};
 
-// 添加评论
-function addComment(postId) {
-    const commentInput = document.querySelector(`.comment-input[data-post-id="${postId}"]`);
-    const commentText = commentInput.value.trim();
-    
-    if (!commentText) {
-        showToast('请输入评论内容');
-        return;
+// ==================== 图片放大 ====================
+window.toggleImageZoom = function(img) {
+    if (img.classList.contains('zoomed')) {
+        img.classList.remove('zoomed');
+        img.style.transform = 'scale(1)';
+        img.style.cursor = 'zoom-in';
+    } else {
+        img.classList.add('zoomed');
+        img.style.transform = 'scale(2)';
+        img.style.cursor = 'zoom-out';
     }
-    
-    // 确保用户已登录
-    if (!currentUser) {
-        showToast('请先登录');
-        showAuthModal();
-        return;
-    }
-    
-    // 从Firebase加载最新的帖子
-    const postsRef = ref(database, 'posts');
-    get(postsRef).then((snapshot) => {
-        let latestPosts = snapshot.val() || [];
-        
-        // 确保是数组
-        if (!Array.isArray(latestPosts)) {
-            latestPosts = Object.values(latestPosts);
-        }
-        
-        const post = latestPosts.find(p => p.id === postId);
-        
-        if (post) {
-            if (!post.comments) {
-                post.comments = [];
-            }
-            
-            const newComment = {
-                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                text: commentText,
-                timestamp: new Date().toLocaleString('zh-CN'),
-                user: {
-                    id: currentUser.id,
-                    username: currentUser.username,
-                    avatar: currentUser.avatar
-                }
-            };
-            
-            post.comments.push(newComment);
-            
-            // 保存到Firebase
-            set(postsRef, latestPosts).then(() => {
-                // 更新本地帖子数组
-                posts = latestPosts;
-                
-                // 渲染帖子
-                renderPosts();
-                showRanking('comments'); // 更新评论榜
-                
-                // 清空评论输入框
-                commentInput.value = '';
-                
-                // 显示评论成功提示
-                showToast('评论成功');
-                console.log('评论成功，当前评论数:', post.comments.length);
-            }).catch((error) => {
-                console.error('添加评论失败:', error);
-                showToast('添加评论失败，请检查网络连接');
-            });
-        }
-    }).catch((error) => {
-        console.error('加载帖子失败:', error);
-        showToast('添加评论失败，请检查网络连接');
-    });
-}
+};
 
-// 显示排行榜
-function showRanking(type) {
-    // 更新标签状态
-    const tabs = document.querySelectorAll('.ranking-tab');
-    tabs.forEach(tab => tab.classList.remove('active'));
-    event.target.classList.add('active');
-    
-    // 排序帖子
-    let sortedPosts = [...posts];
-    
-    switch (type) {
-        case 'likes':
-            sortedPosts.sort((a, b) => (b.likes || 0) - (a.likes || 0));
-            break;
-        case 'views':
-            sortedPosts.sort((a, b) => (b.views || 0) - (a.views || 0));
-            break;
-        case 'comments':
-            sortedPosts.sort((a, b) => (b.comments ? b.comments.length : 0) - (a.comments ? a.comments.length : 0));
-            break;
-    }
-    
-    // 显示前10个帖子
-    const rankingContainer = document.getElementById('ranking-container');
-    rankingContainer.innerHTML = '';
-    
-    if (sortedPosts.length === 0) {
-        rankingContainer.innerHTML = '<p class="no-posts">还没有分享，快来发布第一条吧！</p>';
-        return;
-    }
-    
-    const topPosts = sortedPosts.slice(0, 10);
-    topPosts.forEach((post, index) => {
-        const postElement = createRankingPostElement(post, index + 1);
-        rankingContainer.appendChild(postElement);
-    });
-}
-
-// 创建排行榜帖子元素
-function createRankingPostElement(post, rank) {
-    const postDiv = document.createElement('div');
-    postDiv.className = 'post-item';
-    postDiv.dataset.id = post.id;
-    
-    let mediaHtml = '';
-    if (post.image) {
-        mediaHtml = `<div class="post-item-media"><img src="${post.image}" alt="图片" onclick="toggleImageZoom(this)"></div>`;
-    } else if (post.video) {
-        mediaHtml = `<div class="post-item-media"><video controls><source src="${post.video}" type="video/mp4">您的浏览器不支持视频播放</video></div>`;
-    } else if (post.voice) {
-        mediaHtml = `<div class="post-item-media"><audio controls><source src="${post.voice}" type="audio/wav">您的浏览器不支持音频播放</div>`;
-    }
-    
-    // 检查用户是否已点赞
-    let userId = localStorage.getItem('treeholeUserId');
-    if (!userId) {
-        userId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('treeholeUserId', userId);
-    }
-    
-    const isLiked = post.likedBy && post.likedBy.includes(userId);
-    const likeButtonClass = isLiked ? 'action-btn like-btn liked' : 'action-btn like-btn';
-    
-    // 渲染评论
-    let commentsHtml = '';
-    if (post.comments && post.comments.length > 0) {
-        commentsHtml = `<div class="post-comments">
-            <h4>评论 (${post.comments.length})</h4>
-            <ul class="comments-list">`;
-        post.comments.forEach(comment => {
-            // 评论用户信息
-        let commentUserHtml = '';
-        if (comment.user) {
-            commentUserHtml = `<div class="comment-user" style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
-                <img src="${comment.user.avatar}" alt="${comment.user.username}" style="width: 20px; height: 20px; border-radius: 50%;">
-                <span style="font-weight: 600; font-size: 0.8rem; color: #667eea;">${comment.user.username}</span>
-            </div>`;
-        }
-        
-        commentsHtml += `<li class="comment-item">
-                ${commentUserHtml}
-                <span class="comment-text">${comment.text}</span>
-                <span class="comment-time">${comment.timestamp}</span>
-            </li>`;
-        });
-        commentsHtml += `</ul></div>`;
-    }
-    
-    // 用户信息
-    let userHtml = '';
-    if (post.user) {
-        userHtml = `<div class="post-user" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <img src="${post.user.avatar}" alt="${post.user.username}" class="user-avatar" style="width: 30px; height: 30px;">
-            <span class="user-name" style="font-weight: 600; color: #667eea;">${post.user.username}</span>
-        </div>`;
-    }
-    
-    postDiv.innerHTML = `
-        <div style="display: flex; align-items: flex-start; gap: 15px;">
-            <div class="rank-number">${rank}</div>
-            <div style="flex: 1;">
-                ${userHtml}
-                <div class="post-item-content">${post.text || ''}</div>
-                ${mediaHtml}
-                <div class="post-item-meta">
-                    <span class="post-time">${post.timestamp} · ${post.views} 浏览</span>
-                    <div class="post-item-actions">
-                        <button class="${likeButtonClass}" onclick="toggleLike(${post.id})"><i class="fas fa-heart"></i> <span>${post.likes}</span></button>
-                        <button class="action-btn delete-btn" onclick="deletePost(${post.id})"><i class="fas fa-trash"></i> 删除</button>
-                    </div>
-                </div>
-                ${commentsHtml}
-                <div class="comment-form">
-                    <input type="text" class="comment-input" placeholder="写下你的评论..." data-post-id="${post.id}">
-                    <button class="comment-btn" onclick="addComment(${post.id})"><i class="fas fa-paper-plane"></i></button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    return postDiv;
-}
-
-// 添加一些示例帖子
-function addSamplePosts() {
-    const samplePosts = [
-        {
-            id: 1,
-            text: '今天天气真好，心情也跟着变好了！',
-            image: null,
-            video: null,
-            voice: null,
-            timestamp: new Date().toLocaleString('zh-CN'),
-            likes: 5
-        },
-        {
-            id: 2,
-            text: '分享一张美丽的风景照片',
-            image: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=beautiful%20landscape%20with%20mountains%20and%20lake&image_size=landscape_16_9',
-            video: null,
-            voice: null,
-            timestamp: new Date(Date.now() - 3600000).toLocaleString('zh-CN'),
-            likes: 12
-        }
-    ];
-    
-    posts = [...samplePosts, ...posts];
-    savePosts();
-    renderPosts();
-}
-
-// 页面加载完成后初始化
-window.addEventListener('DOMContentLoaded', function() {
-    init();
-    // 添加示例帖子
-    if (posts.length === 0) {
-        addSamplePosts();
-    }
-    // 初始化排行榜
-    showRanking('likes');
-});
+// ==================== 启动 ====================
+window.addEventListener('DOMContentLoaded', init);

@@ -6,69 +6,11 @@
     <title>心灵树洞 - 分享你的故事</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
-    <!-- 加载遮罩样式 -->
-    <style>
-        #loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.9);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            flex-direction: column;
-            gap: 20px;
-        }
-        #loading-overlay .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        #loading-overlay .loading-text {
-            color: #667eea;
-            font-size: 1rem;
-            font-weight: 500;
-        }
-        .toast {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            z-index: 10000;
-            opacity: 0;
-            transform: translateX(100%);
-            transition: all 0.3s ease;
-        }
-        .toast.show {
-            opacity: 1;
-            transform: translateX(0);
-        }
-        .toast-success { background: #28a745; }
-        .toast-error { background: #dc3545; }
-    </style>
+    <!-- Firebase SDK -->
+    <script type="module" src="script.js"></script>
+
 </head>
 <body>
-    <!-- 加载遮罩 -->
-    <div id="loading-overlay">
-        <div class="spinner"></div>
-        <div class="loading-text">加载中...</div>
-    </div>
-
     <header>
         <div class="container">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -88,6 +30,9 @@
                         <button id="login-btn" class="upload-btn" style="padding: 8px 15px;">登录/注册</button>
                     </div>
                 </div>
+            </div>
+            <div style="margin-top: 15px; padding: 10px; background-color: #f0f8ff; border-radius: 5px; font-size: 0.9rem; color: #333;">
+                <i class="fas fa-info-circle"></i> <strong>数据共享说明：</strong>由于使用浏览器本地存储，不同设备/浏览器之间的数据不自动共享。你可以使用导出/导入功能手动共享数据。
             </div>
         </div>
     </header>
@@ -126,7 +71,7 @@
                     </div>
                     <div class="form-group">
                         <label>密码</label>
-                        <input type="password" id="register-password" placeholder="请输入密码（至少6位）">
+                        <input type="password" id="register-password" placeholder="请输入密码">
                     </div>
                     <div class="form-group">
                         <label>确认密码</label>
@@ -201,7 +146,9 @@
                     <div class="form-group" style="margin-bottom: 15px;">
                         <input type="text" id="friend-search" placeholder="搜索好友...">
                     </div>
-                    <div id="friends-container"></div>
+                    <div id="friends-container">
+                        <!-- 好友列表将在这里显示 -->
+                    </div>
                 </div>
                 
                 <!-- 添加好友 -->
@@ -217,13 +164,17 @@
                 <div id="chat" class="friends-content" style="display: none;">
                     <div class="chat-container">
                         <div class="chat-sidebar">
-                            <div id="chat-friends-list"></div>
+                            <div id="chat-friends-list">
+                                <!-- 好友列表将在这里显示 -->
+                            </div>
                         </div>
                         <div class="chat-main">
                             <div class="chat-header">
                                 <h4 id="chat-friend-name">选择好友开始聊天</h4>
                             </div>
-                            <div id="chat-messages" class="chat-messages"></div>
+                            <div id="chat-messages" class="chat-messages">
+                                <!-- 聊天消息将在这里显示 -->
+                            </div>
                             <div class="chat-input-area">
                                 <input type="text" id="chat-input" placeholder="输入消息...">
                                 <button id="send-message-btn" class="chat-send-btn">发送</button>
@@ -277,7 +228,9 @@
                     <button class="ranking-tab" onclick="showRanking('views')">浏览榜</button>
                     <button class="ranking-tab" onclick="showRanking('comments')">评论榜</button>
                 </div>
-                <div id="ranking-container" class="posts-grid"></div>
+                <div id="ranking-container" class="posts-grid">
+                    <!-- 排行榜内容将在这里显示 -->
+                </div>
             </section>
 
             <!-- 内容展示区域 -->
@@ -294,7 +247,9 @@
                         <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importData(event)">
                     </div>
                 </div>
-                <div id="posts-container" class="posts-grid"></div>
+                <div id="posts-container" class="posts-grid">
+                    <!-- 动态生成的帖子将显示在这里 -->
+                </div>
             </section>
         </div>
     </main>
@@ -305,6 +260,6 @@
         </div>
     </footer>
 
-    <script type="module" src="script_v2.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
