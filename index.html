@@ -15,7 +15,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.95);
             display: none;
             justify-content: center;
             align-items: center;
@@ -60,6 +60,7 @@
         }
         .toast-success { background: #28a745; }
         .toast-error { background: #dc3545; }
+        .toast-info { background: #17a2b8; }
     </style>
 </head>
 <body>
@@ -122,7 +123,7 @@
                 <div id="register-form" class="auth-form" style="display: none;">
                     <div class="form-group">
                         <label>用户名</label>
-                        <input type="text" id="register-username" placeholder="请输入用户名">
+                        <input type="text" id="register-username" placeholder="请输入用户名（2-20字符）">
                     </div>
                     <div class="form-group">
                         <label>密码</label>
@@ -137,7 +138,7 @@
                 
                 <!-- 第三方登录 -->
                 <div class="third-party-login">
-                    <p>其他登录方式</p>
+                    <p>快速登录</p>
                     <div class="login-buttons">
                         <button class="third-party-btn wechat-btn" onclick="loginWithWechat()">
                             <i class="fab fa-weixin"></i> 微信登录
@@ -193,7 +194,6 @@
                 <div class="friends-tabs">
                     <button class="friends-tab active" onclick="switchFriendsTab('list')">好友列表</button>
                     <button class="friends-tab" onclick="switchFriendsTab('add')">添加好友</button>
-                    <button class="friends-tab" onclick="switchFriendsTab('chat')">聊天</button>
                 </div>
                 
                 <!-- 好友列表 -->
@@ -211,25 +211,6 @@
                         <input type="text" id="add-friend-username" placeholder="请输入好友用户名或用户ID">
                     </div>
                     <button id="add-friend-btn" class="auth-btn">添加好友</button>
-                </div>
-                
-                <!-- 聊天 -->
-                <div id="chat" class="friends-content" style="display: none;">
-                    <div class="chat-container">
-                        <div class="chat-sidebar">
-                            <div id="chat-friends-list"></div>
-                        </div>
-                        <div class="chat-main">
-                            <div class="chat-header">
-                                <h4 id="chat-friend-name">选择好友开始聊天</h4>
-                            </div>
-                            <div id="chat-messages" class="chat-messages"></div>
-                            <div class="chat-input-area">
-                                <input type="text" id="chat-input" placeholder="输入消息...">
-                                <button id="send-message-btn" class="chat-send-btn">发送</button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -288,10 +269,6 @@
                         <button onclick="exportData()" class="upload-btn" style="padding: 8px 15px;">
                             <i class="fas fa-download"></i> 导出
                         </button>
-                        <label for="import-file" class="upload-btn" style="padding: 8px 15px; cursor: pointer;">
-                            <i class="fas fa-upload"></i> 导入
-                        </label>
-                        <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importData(event)">
                     </div>
                 </div>
                 <div id="posts-container" class="posts-grid"></div>
@@ -305,6 +282,6 @@
         </div>
     </footer>
 
-    <script type="module" src="script_v2.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>

@@ -1,8 +1,13 @@
-// 心灵树洞 - 优化版 script.js (Part 1)
-// 修复：并发问题、浏览量循环、用户体验
+// 心灵树洞 - Supabase 版本
+// 使用 Supabase 作为后端数据库和存储
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, get, push, remove, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+// ==================== Supabase 配置 ====================
+const SUPABASE_URL = 'https://tgadmkpyufqnnciowydo.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYWRta3B5dWZxbm5jaW93eWRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMTc3NDUsImV4cCI6MjA5MDc5Mzc0NX0.Vj7cyl0Yqj55ZM4-S66vZ3-uWh6MOfGeKBus706eJow';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ==================== 全局状态 ====================
 let posts = [];
@@ -12,44 +17,84 @@ let currentVideo = null;
 let currentVoice = null;
 let mediaRecorder = null;
 let audioChunks = [];
-let database = null;
-let viewedPosts = new Set(); // 记录已浏览的帖子ID
-
-// Firebase配置
-const firebaseConfig = {
-  apiKey: "AIzaSyAvWzmxHNSHG9wTbjv9dv4Ce-mN_OFBN7g",
-  authDomain: "xlsd-f3985.firebaseapp.com",
-  databaseURL: "https://xlsd-f3985-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "xlsd-f3985",
-  storageBucket: "xlsd-f3985.firebasestorage.app",
-  messagingSenderId: "728217927193",
-  appId: "1:728217927193:web:4a81b4ca32fe38783eb488"
-};
+let viewedPosts = new Set();
+let subscriptions = [];
 
 // ==================== 初始化 ====================
-function initFirebase() {
+async function init() {
+    showLoading(true);
+    
     try {
-        const app = initializeApp(firebaseConfig);
-        database = getDatabase(app);
-        console.log('Firebase初始化成功');
-        return true;
+        // 检查本地存储的用户
+        const savedUser = localStorage.getItem('treeholeUser');
+        if (savedUser) {
+            currentUser = JSON.parse(savedUser);
+            // 验证用户是否还存在
+            const { data } = await supabase.from('users').select('*').eq('id', currentUser.id).single();
+            if (!data) {
+                currentUser = null;
+                localStorage.removeItem('treeholeUser');
+            } else {
+                currentUser = data;
+            }
+        }
+        
+        updateUserInfo();
+        await loadPosts();
+        bindEvents();
+        bindAuthEvents();
+        setupRealtimeSubscription();
+        
+        // 初始化排行榜
+        setTimeout(() => showRanking('likes'), 500);
+        
     } catch (error) {
-        console.error('Firebase初始化失败:', error);
-        showToast('数据存储初始化失败', 'error');
-        return false;
+        console.error('初始化失败:', error);
+        showToast('加载失败，请刷新页面', 'error');
+    } finally {
+        showLoading(false);
     }
 }
 
-function init() {
-    showLoading(true);
-    if (!initFirebase()) { showLoading(false); return; }
-    loadUser();
-    updateUserInfo();
-    loadPosts();
-    bindEvents();
-    bindAuthEvents();
-    startRealTimeUpdates();
-    setTimeout(() => showRanking('likes'), 500);
+// ==================== 实时订阅 ====================
+function setupRealtimeSubscription() {
+    // 订阅帖子变化
+    const postsChannel = supabase
+        .channel('posts-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+            loadPosts();
+        })
+        .subscribe();
+    
+    subscriptions.push(postsChannel);
+}
+
+// ==================== 工具函数 ====================
+function showLoading(show) {
+    const loader = document.getElementById('loading-overlay');
+    if (loader) loader.style.display = show ? 'flex' : 'none';
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.classList.add('show'), 100);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
 // ==================== 事件绑定 ====================
@@ -81,30 +126,6 @@ function bindAuthEvents() {
     document.getElementById('friend-search').addEventListener('input', function() { searchFriends(this.value); });
 }
 
-// ==================== 工具函数 ====================
-function showLoading(show) {
-    const loader = document.getElementById('loading-overlay');
-    if (loader) loader.style.display = show ? 'flex' : 'none';
-}
-
-function showToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.classList.add('show'), 100);
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 // ==================== 用户认证 ====================
 function showAuthModal() { document.getElementById('auth-modal').style.display = 'block'; }
 function hideAuthModal() { document.getElementById('auth-modal').style.display = 'none'; }
@@ -120,27 +141,46 @@ window.switchAuthTab = function(tab) {
 async function login() {
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value.trim();
-    if (!username || !password) { showToast('请输入用户名和密码', 'error'); return; }
+    
+    if (!username || !password) {
+        showToast('请输入用户名和密码', 'error');
+        return;
+    }
     
     showLoading(true);
+    
     try {
-        const snapshot = await get(ref(database, 'users'));
-        const users = snapshot.val() || {};
-        const user = Object.values(users).find(u => u.username === username && u.password === password);
-        if (user) {
-            currentUser = user;
-            saveUser();
-            updateUserInfo();
-            hideAuthModal();
-            showToast('登录成功', 'success');
-            loadPosts();
-        } else {
-            showToast('用户名或密码错误', 'error');
+        // 简单密码验证（实际项目应该用 Supabase Auth）
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('username', username)
+            .single();
+        
+        if (error || !data) {
+            showToast('用户名不存在', 'error');
+            return;
         }
+        
+        // 验证密码（存在本地）
+        const storedPassword = localStorage.getItem(`pwd_${data.id}`);
+        if (storedPassword && storedPassword !== password) {
+            showToast('密码错误', 'error');
+            return;
+        }
+        
+        currentUser = data;
+        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        updateUserInfo();
+        hideAuthModal();
+        showToast('登录成功', 'success');
+        
     } catch (error) {
         console.error('登录失败:', error);
-        showToast('登录失败，请检查网络', 'error');
-    } finally { showLoading(false); }
+        showToast('登录失败，请重试', 'error');
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function register() {
@@ -148,51 +188,73 @@ async function register() {
     const password = document.getElementById('register-password').value.trim();
     const confirmPassword = document.getElementById('register-confirm-password').value.trim();
     
-    if (!username || !password || !confirmPassword) { showToast('请填写所有字段', 'error'); return; }
-    if (password !== confirmPassword) { showToast('两次密码不一致', 'error'); return; }
-    if (password.length < 6) { showToast('密码至少6位', 'error'); return; }
+    if (!username || !password || !confirmPassword) {
+        showToast('请填写所有字段', 'error');
+        return;
+    }
+    
+    if (password !== confirmPassword) {
+        showToast('两次密码不一致', 'error');
+        return;
+    }
+    
+    if (password.length < 6) {
+        showToast('密码至少6位', 'error');
+        return;
+    }
+    
+    if (username.length < 2 || username.length > 20) {
+        showToast('用户名2-20个字符', 'error');
+        return;
+    }
     
     showLoading(true);
+    
     try {
-        const usersRef = ref(database, 'users');
-        const snapshot = await get(usersRef);
-        const users = snapshot.val() || {};
+        const userId = generateId();
+        const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff&size=128`;
         
-        if (Object.values(users).some(u => u.username === username)) {
-            showToast('用户名已存在', 'error');
-            showLoading(false);
+        const { error } = await supabase
+            .from('users')
+            .insert({
+                id: userId,
+                username: username,
+                avatar: avatar
+            });
+        
+        if (error) {
+            if (error.code === '23505') {
+                showToast('用户名已存在', 'error');
+            } else {
+                showToast('注册失败: ' + error.message, 'error');
+            }
             return;
         }
         
-        const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        const newUser = {
-            id: uniqueId, username, password,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff`,
-            createdAt: new Date().toLocaleString('zh-CN')
-        };
+        // 存储密码到本地（简化方案，实际应该用后端加密）
+        localStorage.setItem(`pwd_${userId}`, password);
         
-        users[uniqueId] = newUser;
-        await set(usersRef, users);
-        currentUser = newUser;
-        saveUser();
+        currentUser = { id: userId, username, avatar };
+        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        
         updateUserInfo();
         hideAuthModal();
-        showToast('注册成功！ID: ' + uniqueId, 'success');
+        showToast('注册成功！', 'success');
+        
     } catch (error) {
         console.error('注册失败:', error);
         showToast('注册失败，请重试', 'error');
-    } finally { showLoading(false); }
+    } finally {
+        showLoading(false);
+    }
 }
 
 function logout() {
     currentUser = null;
-    localStorage.removeItem('treeholeCurrentUser');
+    localStorage.removeItem('treeholeUser');
     updateUserInfo();
     showToast('已退出登录', 'success');
 }
-
-function saveUser() { if (currentUser) localStorage.setItem('treeholeCurrentUser', JSON.stringify(currentUser)); }
-function loadUser() { const d = localStorage.getItem('treeholeCurrentUser'); if (d) currentUser = JSON.parse(d); }
 
 function updateUserInfo() {
     if (currentUser) {
@@ -206,48 +268,46 @@ function updateUserInfo() {
     }
 }
 
-// 第三方登录
+// 第三方登录（模拟）
 window.loginWithWechat = async function() {
-    let name = '微信用户' + Math.floor(Math.random() * 10000);
-    showLoading(true);
-    try {
-        const usersRef = ref(database, 'users');
-        const snapshot = await get(usersRef);
-        const users = snapshot.val() || {};
-        while (Object.values(users).some(u => u.username === name)) name = '微信用户' + Math.floor(Math.random() * 10000);
-        
-        const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        users[id] = { id, username: name, avatar: `https://ui-avatars.com/api/?name=${name}&background=07C160&color=fff`, createdAt: new Date().toLocaleString('zh-CN') };
-        await set(usersRef, users);
-        currentUser = users[id];
-        saveUser();
-        updateUserInfo();
-        hideAuthModal();
-        showToast('微信登录成功', 'success');
-    } catch (e) { console.error(e); showToast('登录失败', 'error'); }
-    finally { showLoading(false); }
+    const username = '微信用户' + Math.floor(Math.random() * 100000);
+    await quickRegister(username, '07C160');
 };
 
 window.loginWithQQ = async function() {
-    let name = 'QQ用户' + Math.floor(Math.random() * 10000);
+    const username = 'QQ用户' + Math.floor(Math.random() * 100000);
+    await quickRegister(username, '12B7F5');
+};
+
+async function quickRegister(username, color) {
     showLoading(true);
     try {
-        const usersRef = ref(database, 'users');
-        const snapshot = await get(usersRef);
-        const users = snapshot.val() || {};
-        while (Object.values(users).some(u => u.username === name)) name = 'QQ用户' + Math.floor(Math.random() * 10000);
+        const userId = generateId();
+        const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=${color}&color=fff&size=128`;
         
-        const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        users[id] = { id, username: name, avatar: `https://ui-avatars.com/api/?name=${name}&background=12B7F5&color=fff`, createdAt: new Date().toLocaleString('zh-CN') };
-        await set(usersRef, users);
-        currentUser = users[id];
-        saveUser();
+        const { error } = await supabase
+            .from('users')
+            .insert({ id: userId, username, avatar });
+        
+        if (error) {
+            showToast('登录失败，请重试', 'error');
+            return;
+        }
+        
+        currentUser = { id: userId, username, avatar };
+        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        
         updateUserInfo();
         hideAuthModal();
-        showToast('QQ登录成功', 'success');
-    } catch (e) { console.error(e); showToast('登录失败', 'error'); }
-    finally { showLoading(false); }
-};
+        showToast('登录成功', 'success');
+        
+    } catch (error) {
+        console.error(error);
+        showToast('登录失败', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
 
 // ==================== 设置 ====================
 function showSettingsModal() {
@@ -262,9 +322,14 @@ function showSettingsModal() {
 function handleAvatarUpload(e) {
     const file = e.target.files[0];
     if (file) {
-        if (file.size > 2 * 1024 * 1024) { showToast('图片不能超过2MB', 'error'); return; }
+        if (file.size > 2 * 1024 * 1024) {
+            showToast('图片不能超过2MB', 'error');
+            return;
+        }
         const reader = new FileReader();
-        reader.onload = e => { document.getElementById('settings-avatar').src = e.target.result; };
+        reader.onload = e => {
+            document.getElementById('settings-avatar').src = e.target.result;
+        };
         reader.readAsDataURL(file);
     }
 }
@@ -272,55 +337,103 @@ function handleAvatarUpload(e) {
 async function saveSettings() {
     const username = document.getElementById('settings-username').value.trim();
     const avatar = document.getElementById('settings-avatar').src;
-    if (!username) { showToast('请输入用户名', 'error'); return; }
+    
+    if (!username) {
+        showToast('请输入用户名', 'error');
+        return;
+    }
     
     showLoading(true);
+    
     try {
-        const usersRef = ref(database, 'users');
-        const snapshot = await get(usersRef);
-        const users = snapshot.val() || {};
+        const { error } = await supabase
+            .from('users')
+            .update({ username, avatar })
+            .eq('id', currentUser.id);
         
-        if (Object.values(users).some(u => u.username === username && u.id !== currentUser.id)) {
-            showToast('用户名已被占用', 'error');
-            showLoading(false);
+        if (error) {
+            if (error.code === '23505') {
+                showToast('用户名已被占用', 'error');
+            } else {
+                showToast('保存失败', 'error');
+            }
             return;
         }
         
         currentUser.username = username;
         currentUser.avatar = avatar;
-        users[currentUser.id] = currentUser;
-        await set(usersRef, users);
-        saveUser();
+        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        
         updateUserInfo();
         document.getElementById('settings-modal').style.display = 'none';
         showToast('设置保存成功', 'success');
-        renderPosts();
-    } catch (e) { console.error(e); showToast('保存失败', 'error'); }
-    finally { showLoading(false); }
+        
+    } catch (error) {
+        console.error(error);
+        showToast('保存失败', 'error');
+    } finally {
+        showLoading(false);
+    }
 }
 
 // ==================== 帖子 ====================
 async function loadPosts() {
     try {
-        const snapshot = await get(ref(database, 'posts'));
-        const data = snapshot.val();
-        if (data) {
-            posts = Array.isArray(data) ? data : Object.values(data);
-            posts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        } else { posts = []; }
+        const { data, error } = await supabase
+            .from('posts')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(50);
+        
+        if (error) throw error;
+        
+        // 获取每条帖子的点赞数和评论数
+        posts = await Promise.all(data.map(async (post) => {
+            const [likesRes, commentsRes] = await Promise.all([
+                supabase.from('likes').select('id', { count: 'exact' }).eq('post_id', post.id),
+                supabase.from('comments').select('*').eq('post_id', post.id)
+            ]);
+            
+            // 检查当前用户是否点赞
+            let liked = false;
+            if (currentUser) {
+                const { data: likeData } = await supabase
+                    .from('likes')
+                    .select('id')
+                    .eq('post_id', post.id)
+                    .eq('user_id', currentUser.id)
+                    .single();
+                liked = !!likeData;
+            }
+            
+            return {
+                ...post,
+                likes: likesRes.count || 0,
+                liked,
+                comments: commentsRes.data || []
+            };
+        }));
+        
         renderPosts();
-    } catch (e) { console.error(e); showToast('加载失败', 'error'); }
-    finally { showLoading(false); }
+        
+    } catch (error) {
+        console.error('加载帖子失败:', error);
+        showToast('加载失败', 'error');
+    }
 }
 
 function renderPosts() {
     const container = document.getElementById('posts-container');
     container.innerHTML = '';
+    
     if (posts.length === 0) {
         container.innerHTML = '<p class="no-posts" style="text-align:center;padding:40px;color:#666;">还没有分享，快来发布第一条吧！</p>';
         return;
     }
-    posts.forEach(p => container.appendChild(createPostElement(p)));
+    
+    posts.forEach(post => {
+        container.appendChild(createPostElement(post));
+    });
 }
 
 function createPostElement(post) {
@@ -328,39 +441,56 @@ function createPostElement(post) {
     div.className = 'post-item';
     div.dataset.id = post.id;
     
-    // 浏览量（仅首次）
-    if (!viewedPosts.has(post.id)) { viewedPosts.add(post.id); incrementViewCount(post.id); }
+    // 浏览量计数
+    if (!viewedPosts.has(post.id)) {
+        viewedPosts.add(post.id);
+        incrementViewCount(post.id);
+    }
     
     let media = '';
-    if (post.image) media = `<div class="post-item-media"><img src="${post.image}" alt="图片" onclick="toggleImageZoom(this)" loading="lazy"></div>`;
-    else if (post.video) media = `<div class="post-item-media"><video controls preload="metadata"><source src="${post.video}"></video></div>`;
-    else if (post.voice) media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice}"></audio></div>`;
+    if (post.image_url) {
+        media = `<div class="post-item-media"><img src="${post.image_url}" alt="图片" onclick="toggleImageZoom(this)" loading="lazy"></div>`;
+    } else if (post.video_url) {
+        media = `<div class="post-item-media"><video controls preload="metadata"><source src="${post.video_url}"></video></div>`;
+    } else if (post.voice_url) {
+        media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice_url}"></audio></div>`;
+    }
     
-    const liked = currentUser && post.likedBy?.includes(currentUser.id);
-    let user = post.user ? `<div class="post-user" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><img src="${post.user.avatar}" style="width:30px;height:30px;border-radius:50%;"><span style="font-weight:600;color:#667eea;">${post.user.username}</span></div>` : '';
+    const userHtml = `<div class="post-user" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
+        <span style="font-weight:600;color:#667eea;">${post.username}</span>
+    </div>`;
     
-    let comments = '';
-    if (post.comments?.length) {
-        comments = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
+    let commentsHtml = '';
+    if (post.comments && post.comments.length > 0) {
+        commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
         post.comments.slice(-5).forEach(c => {
-            const cu = c.user ? `<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;"><img src="${c.user.avatar}" style="width:20px;height:20px;border-radius:50%;"><span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.user.username}</span></div>` : '';
-            comments += `<li class="comment-item">${cu}<span class="comment-text">${escapeHtml(c.text)}</span><span class="comment-time">${c.timestamp}</span></li>`;
+            commentsHtml += `<li class="comment-item">
+                <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+                    <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
+                    <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
+                </div>
+                <span class="comment-text">${escapeHtml(c.content)}</span>
+                <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
+            </li>`;
         });
-        comments += '</ul></div>';
+        commentsHtml += '</ul></div>';
     }
     
     div.innerHTML = `
-        ${user}
-        <div class="post-item-content">${escapeHtml(post.text || '')}</div>
+        ${userHtml}
+        <div class="post-item-content">${escapeHtml(post.content || '')}</div>
         ${media}
         <div class="post-item-meta">
-            <span class="post-time">${post.timestamp} · ${post.views || 0} 浏览</span>
+            <span class="post-time">${new Date(post.created_at).toLocaleString('zh-CN')} · ${post.views || 0} 浏览</span>
             <div class="post-item-actions">
-                <button class="action-btn like-btn ${liked ? 'liked' : ''}" data-id="${post.id}"><i class="fas fa-heart"></i> ${post.likes || 0}</button>
+                <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" data-id="${post.id}">
+                    <i class="fas fa-heart"></i> ${post.likes}
+                </button>
                 <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
             </div>
         </div>
-        ${comments}
+        ${commentsHtml}
         <div class="comment-form">
             <input type="text" class="comment-input" placeholder="写下你的评论..." data-id="${post.id}">
             <button class="comment-btn" data-id="${post.id}"><i class="fas fa-paper-plane"></i></button>
@@ -369,36 +499,51 @@ function createPostElement(post) {
     div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
     div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
     div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
+    
     return div;
 }
 
 async function incrementViewCount(postId) {
     try {
-        const postRef = ref(database, `posts/${postId}`);
-        const snap = await get(postRef);
-        if (snap.val()) await update(postRef, { views: (snap.val().views || 0) + 1 });
-    } catch (e) { console.error('浏览量更新失败', e); }
-}
-
-// ==================== 发布 ====================
-function handleImageUpload(e) {
-    const file = e.target.files[0];
-    if (file) {
-        if (file.size > 5 * 1024 * 1024) { showToast('图片不能超过5MB', 'error'); return; }
-        if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) { showToast('只支持JPEG/PNG/GIF/WebP', 'error'); return; }
-        const reader = new FileReader();
-        reader.onload = e => { currentImage = e.target.result; currentVideo = null; currentVoice = null; showToast('图片已选择', 'success'); };
-        reader.readAsDataURL(file);
+        await supabase.rpc('increment_views', { post_id: postId });
+    } catch (error) {
+        // 如果 RPC 不存在，用普通更新
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+            await supabase
+                .from('posts')
+                .update({ views: (post.views || 0) + 1 })
+                .eq('id', postId);
+        }
     }
 }
 
-function handleVideoUpload(e) {
+// ==================== 发布 ====================
+async function handleImageUpload(e) {
     const file = e.target.files[0];
     if (file) {
-        if (file.size > 20 * 1024 * 1024) { showToast('视频不能超过20MB', 'error'); return; }
-        const reader = new FileReader();
-        reader.onload = e => { currentVideo = e.target.result; currentImage = null; currentVoice = null; showToast('视频已选择', 'success'); };
-        reader.readAsDataURL(file);
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('图片不能超过5MB', 'error');
+            return;
+        }
+        currentImage = file;
+        currentVideo = null;
+        currentVoice = null;
+        showToast('图片已选择', 'success');
+    }
+}
+
+async function handleVideoUpload(e) {
+    const file = e.target.files[0];
+    if (file) {
+        if (file.size > 20 * 1024 * 1024) {
+            showToast('视频不能超过20MB', 'error');
+            return;
+        }
+        currentVideo = file;
+        currentImage = null;
+        currentVoice = null;
+        showToast('视频已选择', 'success');
     }
 }
 
@@ -415,9 +560,9 @@ function toggleVoiceRecord() {
             audioChunks = [];
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
             mediaRecorder.onstop = () => {
-                const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                currentVoice = URL.createObjectURL(blob);
-                currentImage = null; currentVideo = null;
+                currentVoice = new Blob(audioChunks, { type: 'audio/webm' });
+                currentImage = null;
+                currentVideo = null;
                 showToast('语音录制完成', 'success');
                 stream.getTracks().forEach(t => t.stop());
             };
@@ -425,118 +570,206 @@ function toggleVoiceRecord() {
             btn.innerHTML = '<i class="fas fa-stop"></i> 停止';
             btn.style.background = '#ff6b6b';
             btn.style.color = 'white';
-        }).catch(e => { console.error(e); showToast('无法访问麦克风', 'error'); });
+        }).catch(e => {
+            console.error(e);
+            showToast('无法访问麦克风', 'error');
+        });
     }
+}
+
+async function uploadFile(file, bucket = 'images') {
+    const fileName = `${currentUser.id}/${Date.now()}_${file.name}`;
+    const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(fileName, file);
+    
+    if (error) throw error;
+    
+    const { data: urlData } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(fileName);
+    
+    return urlData.publicUrl;
 }
 
 async function handlePost() {
     const text = document.getElementById('post-text').value.trim();
-    if (!text && !currentImage && !currentVideo && !currentVoice) { showToast('请输入内容', 'error'); return; }
-    if (!currentUser) { showToast('请先登录', 'error'); showAuthModal(); return; }
+    
+    if (!text && !currentImage && !currentVideo && !currentVoice) {
+        showToast('请输入内容', 'error');
+        return;
+    }
+    
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
     
     showLoading(true);
-    const newPost = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        text, image: currentImage, video: currentVideo, voice: currentVoice,
-        timestamp: new Date().toLocaleString('zh-CN'),
-        likes: 0, likedBy: [], comments: [], views: 0,
-        user: { id: currentUser.id, username: currentUser.username, avatar: currentUser.avatar }
-    };
     
     try {
-        const postsRef = ref(database, 'posts');
-        const snap = await get(postsRef);
-        let all = snap.val() || [];
-        if (!Array.isArray(all)) all = Object.values(all);
-        all.unshift(newPost);
-        await set(postsRef, all);
-        posts = all;
-        renderPosts();
+        let imageUrl = null;
+        let videoUrl = null;
+        let voiceUrl = null;
+        
+        // 上传文件到 Supabase Storage
+        if (currentImage) {
+            imageUrl = await uploadFile(currentImage, 'images');
+        }
+        if (currentVideo) {
+            videoUrl = await uploadFile(currentVideo, 'videos');
+        }
+        if (currentVoice) {
+            voiceUrl = await uploadFile(currentVoice, 'audio');
+        }
+        
+        const postId = generateId();
+        
+        const { error } = await supabase
+            .from('posts')
+            .insert({
+                id: postId,
+                user_id: currentUser.id,
+                username: currentUser.username,
+                user_avatar: currentUser.avatar,
+                content: text,
+                image_url: imageUrl,
+                video_url: videoUrl,
+                voice_url: voiceUrl
+            });
+        
+        if (error) throw error;
+        
+        // 清空表单
         document.getElementById('post-text').value = '';
-        currentImage = null; currentVideo = null; currentVoice = null;
+        currentImage = null;
+        currentVideo = null;
+        currentVoice = null;
         document.getElementById('image-upload').value = '';
         document.getElementById('video-upload').value = '';
+        
+        await loadPosts();
         showToast('发布成功', 'success');
-    } catch (e) { console.error(e); showToast('发布失败', 'error'); }
-    finally { showLoading(false); }
+        
+    } catch (error) {
+        console.error('发布失败:', error);
+        showToast('发布失败: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
 }
 
 // ==================== 互动 ====================
 async function toggleLike(postId) {
-    if (!currentUser) { showToast('请先登录', 'error'); showAuthModal(); return; }
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
     try {
-        const postsRef = ref(database, 'posts');
-        const snap = await get(postsRef);
-        let all = snap.val() || [];
-        if (!Array.isArray(all)) all = Object.values(all);
-        const post = all.find(p => p.id === postId);
+        const post = posts.find(p => p.id === postId);
         if (!post) return;
-        if (!post.likedBy) post.likedBy = [];
         
-        if (post.likedBy.includes(currentUser.id)) {
-            post.likedBy = post.likedBy.filter(id => id !== currentUser.id);
-            post.likes = Math.max(0, (post.likes || 0) - 1);
-            showToast('已取消点赞', 'success');
+        if (post.liked) {
+            // 取消点赞
+            await supabase
+                .from('likes')
+                .delete()
+                .eq('post_id', postId)
+                .eq('user_id', currentUser.id);
+            post.liked = false;
+            post.likes = Math.max(0, post.likes - 1);
         } else {
-            post.likedBy.push(currentUser.id);
-            post.likes = (post.likes || 0) + 1;
-            showToast('点赞成功', 'success');
+            // 点赞
+            await supabase
+                .from('likes')
+                .insert({
+                    post_id: postId,
+                    user_id: currentUser.id
+                });
+            post.liked = true;
+            post.likes++;
         }
         
-        await set(postsRef, all);
-        posts = all;
         renderPosts();
-    } catch (e) { console.error(e); showToast('操作失败', 'error'); }
+        
+    } catch (error) {
+        console.error('点赞失败:', error);
+        showToast('操作失败', 'error');
+    }
 }
 
 async function deletePost(postId) {
-    if (!currentUser) { showToast('请先登录', 'error'); showAuthModal(); return; }
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        return;
+    }
+    
     const post = posts.find(p => p.id === postId);
-    if (!post?.user || post.user.id !== currentUser.id) { showToast('无权限删除', 'error'); return; }
-    if (!confirm('确定删除？')) return;
+    if (!post || post.user_id !== currentUser.id) {
+        showToast('无权限删除', 'error');
+        return;
+    }
+    
+    if (!confirm('确定删除这条分享？')) return;
     
     showLoading(true);
+    
     try {
-        const postsRef = ref(database, 'posts');
-        const snap = await get(postsRef);
-        let all = snap.val() || [];
-        if (!Array.isArray(all)) all = Object.values(all);
-        all = all.filter(p => p.id !== postId);
-        await set(postsRef, all);
-        posts = all;
-        renderPosts();
+        // 删除相关点赞和评论
+        await supabase.from('likes').delete().eq('post_id', postId);
+        await supabase.from('comments').delete().eq('post_id', postId);
+        
+        // 删除帖子
+        await supabase.from('posts').delete().eq('id', postId);
+        
+        await loadPosts();
         showToast('删除成功', 'success');
-    } catch (e) { console.error(e); showToast('删除失败', 'error'); }
-    finally { showLoading(false); }
+        
+    } catch (error) {
+        console.error('删除失败:', error);
+        showToast('删除失败', 'error');
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function addComment(postId) {
     const input = document.querySelector(`.comment-input[data-id="${postId}"]`);
     const text = input?.value.trim();
-    if (!text) { showToast('请输入评论', 'error'); return; }
-    if (!currentUser) { showToast('请先登录', 'error'); showAuthModal(); return; }
+    
+    if (!text) {
+        showToast('请输入评论', 'error');
+        return;
+    }
+    
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
     
     try {
-        const postsRef = ref(database, 'posts');
-        const snap = await get(postsRef);
-        let all = snap.val() || [];
-        if (!Array.isArray(all)) all = Object.values(all);
-        const post = all.find(p => p.id === postId);
-        if (!post) return;
-        if (!post.comments) post.comments = [];
+        await supabase
+            .from('comments')
+            .insert({
+                post_id: postId,
+                user_id: currentUser.id,
+                username: currentUser.username,
+                user_avatar: currentUser.avatar,
+                content: text
+            });
         
-        post.comments.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            text, timestamp: new Date().toLocaleString('zh-CN'),
-            user: { id: currentUser.id, username: currentUser.username, avatar: currentUser.avatar }
-        });
-        
-        await set(postsRef, all);
-        posts = all;
-        renderPosts();
         input.value = '';
+        await loadPosts();
         showToast('评论成功', 'success');
-    } catch (e) { console.error(e); showToast('评论失败', 'error'); }
+        
+    } catch (error) {
+        console.error('评论失败:', error);
+        showToast('评论失败', 'error');
+    }
 }
 
 // ==================== 排行榜 ====================
@@ -551,24 +784,31 @@ window.showRanking = function(type) {
     
     const container = document.getElementById('ranking-container');
     container.innerHTML = '';
-    if (!sorted.length) { container.innerHTML = '<p style="text-align:center;padding:40px;color:#666;">还没有分享</p>'; return; }
     
-    sorted.slice(0, 10).forEach((p, i) => {
+    if (!sorted.length) {
+        container.innerHTML = '<p style="text-align:center;padding:40px;color:#666;">还没有分享</p>';
+        return;
+    }
+    
+    sorted.slice(0, 10).forEach((post, i) => {
         const div = document.createElement('div');
         div.className = 'post-item';
         const rankColor = ['#ffd700', '#c0c0c0', '#cd7f32'][i] || '#667eea';
-        const liked = currentUser && p.likedBy?.includes(currentUser.id);
-        const user = p.user ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><img src="${p.user.avatar}" style="width:30px;height:30px;border-radius:50%;"><span style="font-weight:600;color:#667eea;">${p.user.username}</span></div>` : '';
         
         div.innerHTML = `
             <div style="display:flex;align-items:flex-start;gap:15px;">
                 <div style="font-size:1.5rem;font-weight:bold;color:${rankColor};">${i + 1}</div>
                 <div style="flex:1;">
-                    ${user}
-                    <div class="post-item-content">${escapeHtml(p.text || '')}</div>
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                        <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
+                        <span style="font-weight:600;color:#667eea;">${post.username}</span>
+                    </div>
+                    <div class="post-item-content">${escapeHtml(post.content || '')}</div>
                     <div class="post-item-meta">
-                        <span class="post-time">${p.timestamp} · ${p.views || 0} 浏览</span>
-                        <button class="action-btn like-btn ${liked ? 'liked' : ''}" onclick="toggleLike('${p.id}')"><i class="fas fa-heart"></i> ${p.likes || 0}</button>
+                        <span class="post-time">${new Date(post.created_at).toLocaleString('zh-CN')} · ${post.views || 0} 浏览</span>
+                        <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" onclick="toggleLike('${post.id}')">
+                            <i class="fas fa-heart"></i> ${post.likes}
+                        </button>
                     </div>
                 </div>
             </div>`;
@@ -576,27 +816,11 @@ window.showRanking = function(type) {
     });
 };
 
-// ==================== 实时更新 ====================
-function startRealTimeUpdates() {
-    onValue(ref(database, 'posts'), snap => {
-        const data = snap.val();
-        if (data) {
-            const newPosts = Array.isArray(data) ? data : Object.values(data);
-            newPosts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-            if (JSON.stringify(newPosts) !== JSON.stringify(posts)) {
-                posts = newPosts;
-                renderPosts();
-            }
-        }
-    });
-}
-
 // ==================== 好友系统 ====================
 function showFriendsModal() {
     if (currentUser) {
         document.getElementById('friends-modal').style.display = 'block';
         loadFriends();
-        loadChatFriends();
     }
 }
 
@@ -606,180 +830,172 @@ window.switchFriendsTab = function(tab) {
     document.querySelectorAll('.friends-content').forEach(c => c.style.display = 'none');
     document.getElementById(tab).style.display = 'block';
     if (tab === 'list') loadFriends();
-    else if (tab === 'chat') loadChatFriends();
 };
 
 async function loadFriends() {
     const container = document.getElementById('friends-container');
     container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">加载中...</p>';
+    
     try {
-        const [fSnap, uSnap] = await Promise.all([get(ref(database, 'friends')), get(ref(database, 'users'))]);
-        const friends = fSnap.val()?.[currentUser.id] || [];
-        const users = uSnap.val() || {};
+        const { data } = await supabase
+            .from('friends')
+            .select('friend_id, users!friends_friend_id_fkey(*)')
+            .eq('user_id', currentUser.id);
+        
         container.innerHTML = '';
         
-        if (!friends.length) { container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">还没有好友</p>'; return; }
-        friends.forEach(id => {
-            const f = users[id];
-            if (f) {
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">还没有好友</p>';
+            return;
+        }
+        
+        data.forEach(item => {
+            const friend = item.users;
+            if (friend) {
                 const div = document.createElement('div');
                 div.className = 'friend-item';
-                div.innerHTML = `<img src="${f.avatar}"><div class="friend-item-info"><div class="friend-item-name">${f.username}</div></div><div class="friend-item-actions"><button class="upload-btn" onclick="startChat('${f.id}')" style="padding:5px 10px;">聊天</button><button class="upload-btn" onclick="removeFriend('${f.id}')" style="padding:5px 10px;">删除</button></div>`;
+                div.innerHTML = `
+                    <img src="${friend.avatar}">
+                    <div class="friend-item-info">
+                        <div class="friend-item-name">${friend.username}</div>
+                    </div>
+                    <div class="friend-item-actions">
+                        <button class="upload-btn" onclick="removeFriend('${friend.id}')" style="padding:5px 10px;">删除</button>
+                    </div>`;
                 container.appendChild(div);
             }
         });
-    } catch (e) { console.error(e); container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">加载失败</p>'; }
-}
-
-async function loadChatFriends() {
-    const container = document.getElementById('chat-friends-list');
-    container.innerHTML = '';
-    try {
-        const [fSnap, uSnap] = await Promise.all([get(ref(database, 'friends')), get(ref(database, 'users'))]);
-        const friends = fSnap.val()?.[currentUser.id] || [];
-        const users = uSnap.val() || {};
-        if (!friends.length) { container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">还没有好友</p>'; return; }
         
-        friends.forEach(id => {
-            const f = users[id];
-            if (f) {
-                const div = document.createElement('div');
-                div.className = 'chat-friend-item';
-                div.dataset.friendId = f.id;
-                div.innerHTML = `<img src="${f.avatar}"><span>${f.username}</span>`;
-                div.onclick = function() {
-                    document.querySelectorAll('.chat-friend-item').forEach(i => i.classList.remove('active'));
-                    this.classList.add('active');
-                    startChat(f.id);
-                };
-                container.appendChild(div);
-            }
-        });
-    } catch (e) { console.error(e); }
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">加载失败</p>';
+    }
 }
 
 async function addFriend() {
     const input = document.getElementById('add-friend-username').value.trim();
-    if (!input) { showToast('请输入用户名或ID', 'error'); return; }
+    if (!input) {
+        showToast('请输入用户名或ID', 'error');
+        return;
+    }
     
     try {
-        const uSnap = await get(ref(database, 'users'));
-        const users = uSnap.val() || {};
-        const user = Object.values(users).find(u => (u.username === input || u.id === input) && u.id !== currentUser.id);
-        if (!user) { showToast('未找到该用户', 'error'); return; }
+        const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .or(`username.eq.${input},id.eq.${input}`)
+            .neq('id', currentUser.id)
+            .single();
         
-        const fSnap = await get(ref(database, 'friends'));
-        const friends = fSnap.val() || {};
-        const myFriends = friends[currentUser.id] || [];
-        if (myFriends.includes(user.id)) { showToast('已经是好友', 'error'); return; }
+        if (!user) {
+            showToast('未找到该用户', 'error');
+            return;
+        }
         
-        myFriends.push(user.id);
-        friends[currentUser.id] = myFriends;
-        await set(ref(database, 'friends'), friends);
+        // 检查是否已是好友
+        const { data: existing } = await supabase
+            .from('friends')
+            .select('id')
+            .eq('user_id', currentUser.id)
+            .eq('friend_id', user.id)
+            .single();
+        
+        if (existing) {
+            showToast('已经是好友', 'error');
+            return;
+        }
+        
+        await supabase.from('friends').insert({
+            user_id: currentUser.id,
+            friend_id: user.id
+        });
+        
         showToast('添加成功', 'success');
         document.getElementById('add-friend-username').value = '';
         loadFriends();
-    } catch (e) { console.error(e); showToast('添加失败', 'error'); }
+        
+    } catch (error) {
+        console.error(error);
+        showToast('添加失败', 'error');
+    }
 }
 
-window.removeFriend = async function(id) {
+window.removeFriend = async function(friendId) {
     if (!confirm('确定删除此好友？')) return;
+    
     try {
-        const fSnap = await get(ref(database, 'friends'));
-        const friends = fSnap.val() || {};
-        friends[currentUser.id] = (friends[currentUser.id] || []).filter(i => i !== id);
-        await set(ref(database, 'friends'), friends);
+        await supabase
+            .from('friends')
+            .delete()
+            .eq('user_id', currentUser.id)
+            .eq('friend_id', friendId);
+        
         loadFriends();
-        loadChatFriends();
-        showToast('已删除好友', 'success');
-    } catch (e) { console.error(e); showToast('删除失败', 'error'); }
+        showToast('已删除', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast('删除失败', 'error');
+    }
 };
-
-window.startChat = function(friendId) {
-    get(ref(database, 'users')).then(snap => {
-        const users = snap.val() || {};
-        const f = users[friendId];
-        if (f) {
-            document.getElementById('chat-friend-name').textContent = f.username;
-            loadChatMessages(friendId);
-        }
-    });
-};
-
-async function loadChatMessages(friendId) {
-    const container = document.getElementById('chat-messages');
-    container.innerHTML = '';
-    const key = 'chat_' + [currentUser.id, friendId].sort().join('_');
-    try {
-        const snap = await get(ref(database, 'chats/' + key));
-        const msgs = snap.val() || [];
-        msgs.forEach(m => {
-            const div = document.createElement('div');
-            div.className = 'chat-message' + (m.senderId === currentUser.id ? ' self' : '');
-            div.innerHTML = `<div class="chat-message-content">${escapeHtml(m.content)}</div><div class="chat-message-time">${m.timestamp}</div>`;
-            container.appendChild(div);
-        });
-        container.scrollTop = container.scrollHeight;
-    } catch (e) { console.error(e); }
-}
 
 async function sendMessage() {
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
     if (!text) return;
     
-    const activeFriend = document.querySelector('.chat-friend-item.active');
-    if (!activeFriend) { showToast('请选择好友', 'error'); return; }
-    
-    const friendId = activeFriend.dataset.friendId;
-    const key = 'chat_' + [currentUser.id, friendId].sort().join('_');
-    
-    try {
-        const snap = await get(ref(database, 'chats/' + key));
-        const msgs = snap.val() || [];
-        msgs.push({
-            id: Date.now().toString(),
-            senderId: currentUser.id,
-            content: text,
-            timestamp: new Date().toLocaleString('zh-CN')
-        });
-        await set(ref(database, 'chats/' + key), msgs);
-        input.value = '';
-        loadChatMessages(friendId);
-    } catch (e) { console.error(e); showToast('发送失败', 'error'); }
+    showToast('聊天功能开发中...', 'info');
 }
 
 async function searchFriends(keyword) {
+    if (!keyword) {
+        loadFriends();
+        return;
+    }
+    
     const container = document.getElementById('friends-container');
-    container.innerHTML = '';
-    if (!keyword) { loadFriends(); return; }
+    container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">搜索中...</p>';
     
     try {
-        const [fSnap, uSnap] = await Promise.all([get(ref(database, 'friends')), get(ref(database, 'users'))]);
-        const friends = fSnap.val()?.[currentUser.id] || [];
-        const users = uSnap.val() || {};
+        const { data } = await supabase
+            .from('friends')
+            .select('friend_id, users!friends_friend_id_fkey(*)')
+            .eq('user_id', currentUser.id);
         
-        const filtered = friends.filter(id => {
-            const f = users[id];
+        const filtered = data.filter(item => {
+            const f = item.users;
             return f && (f.username.toLowerCase().includes(keyword.toLowerCase()) || f.id.includes(keyword));
         });
         
-        if (!filtered.length) { container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">未找到匹配的好友</p>'; return; }
+        container.innerHTML = '';
         
-        filtered.forEach(id => {
-            const f = users[id];
-            if (f) {
-                const div = document.createElement('div');
-                div.className = 'friend-item';
-                div.innerHTML = `<img src="${f.avatar}"><div class="friend-item-info"><div class="friend-item-name">${f.username}</div><div style="font-size:0.8rem;color:#999;">ID: ${f.id}</div></div><div class="friend-item-actions"><button class="upload-btn" onclick="startChat('${f.id}')" style="padding:5px 10px;">聊天</button><button class="upload-btn" onclick="removeFriend('${f.id}')" style="padding:5px 10px;">删除</button></div>`;
-                container.appendChild(div);
-            }
+        if (!filtered.length) {
+            container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">未找到匹配的好友</p>';
+            return;
+        }
+        
+        filtered.forEach(item => {
+            const friend = item.users;
+            const div = document.createElement('div');
+            div.className = 'friend-item';
+            div.innerHTML = `
+                <img src="${friend.avatar}">
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${friend.username}</div>
+                    <div style="font-size:0.8rem;color:#999;">ID: ${friend.id}</div>
+                </div>
+                <div class="friend-item-actions">
+                    <button class="upload-btn" onclick="removeFriend('${friend.id}')" style="padding:5px 10px;">删除</button>
+                </div>`;
+            container.appendChild(div);
         });
-    } catch (e) { console.error(e); }
+        
+    } catch (error) {
+        console.error(error);
+    }
 }
 
 // ==================== 导入导出 ====================
-window.exportData = function() {
+window.exportData = async function() {
     const data = JSON.stringify(posts, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -791,20 +1007,7 @@ window.exportData = function() {
 };
 
 window.importData = function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        try {
-            const imported = JSON.parse(e.target.result);
-            if (!Array.isArray(imported)) { showToast('格式无效', 'error'); return; }
-            await set(ref(database, 'posts'), imported);
-            posts = imported;
-            renderPosts();
-            showToast('导入成功', 'success');
-        } catch (err) { console.error(err); showToast('导入失败', 'error'); }
-    };
-    reader.readAsText(file);
+    showToast('导入功能开发中...', 'info');
 };
 
 // ==================== 图片放大 ====================
