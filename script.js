@@ -529,10 +529,10 @@ function showToast(message) {
 
 // 启动自动更新
 function startAutoUpdate() {
-    // 每5秒检查一次更新
+    // 每10分钟检查一次更新
     updateInterval = setInterval(() => {
         checkForUpdates();
-    }, 5000);
+    }, 600000); // 10分钟 = 600000毫秒
 }
 
 // 检查更新
