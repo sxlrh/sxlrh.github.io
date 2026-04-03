@@ -39,7 +39,8 @@ try {
         ref: function(path) {
             return {
                 once: function(event, callback) {
-                    const data = localStorage.getItem('firebase_' + path);
+                    // 使用公共存储键，确保所有用户都能看到相同的内容
+                    const data = localStorage.getItem('treehole_' + path);
                     callback({
                         val: function() {
                             return data ? JSON.parse(data) : null;
@@ -47,7 +48,8 @@ try {
                     });
                 },
                 set: function(data) {
-                    localStorage.setItem('firebase_' + path, JSON.stringify(data));
+                    // 使用公共存储键，确保所有用户都能看到相同的内容
+                    localStorage.setItem('treehole_' + path, JSON.stringify(data));
                 }
             };
         }
