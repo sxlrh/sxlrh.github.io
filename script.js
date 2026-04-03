@@ -143,6 +143,18 @@ function bindAuthEvents() {
     // 注册按钮点击事件
     document.getElementById('submit-register').addEventListener('click', register);
     
+    // 微信登录按钮点击事件
+    const wechatBtn = document.querySelector('.wechat-btn');
+    if (wechatBtn) {
+        wechatBtn.addEventListener('click', loginWithWechat);
+    }
+    
+    // QQ登录按钮点击事件
+    const qqBtn = document.querySelector('.qq-btn');
+    if (qqBtn) {
+        qqBtn.addEventListener('click', loginWithQQ);
+    }
+    
     // 退出按钮点击事件
     document.getElementById('logout-btn').addEventListener('click', logout);
     
@@ -228,6 +240,8 @@ function login() {
             updateUserInfo();
             hideAuthModal();
             showToast('登录成功');
+            // 加载帖子数据
+            loadPosts();
         } else {
             showToast('用户名或密码错误');
         }
@@ -277,17 +291,19 @@ function register() {
         };
         
         // 保存到Firebase
-        users[uniqueId] = newUser;
-        set(usersRef, users).then(() => {
-            currentUser = newUser;
-            saveUser();
-            updateUserInfo();
-            hideAuthModal();
-            showToast('注册成功，您的用户ID是：' + uniqueId);
-        }).catch((error) => {
-            console.error('注册失败:', error);
-            showToast('注册失败，请检查网络连接');
-        });
+            users[uniqueId] = newUser;
+            set(usersRef, users).then(() => {
+                currentUser = newUser;
+                saveUser();
+                updateUserInfo();
+                hideAuthModal();
+                showToast('注册成功，您的用户ID是：' + uniqueId);
+                // 加载帖子数据
+                loadPosts();
+            }).catch((error) => {
+                console.error('注册失败:', error);
+                showToast('注册失败，请检查网络连接');
+            });
     }).catch((error) => {
         console.error('注册失败:', error);
         showToast('注册失败，请检查网络连接');
@@ -320,17 +336,19 @@ function loginWithWechat() {
         };
         
         // 保存到Firebase
-        users[uniqueId] = newUser;
-        set(usersRef, users).then(() => {
-            currentUser = newUser;
-            saveUser();
-            updateUserInfo();
-            hideAuthModal();
-            showToast('微信登录成功，您的用户ID是：' + uniqueId);
-        }).catch((error) => {
-            console.error('微信登录失败:', error);
-            showToast('微信登录失败，请检查网络连接');
-        });
+            users[uniqueId] = newUser;
+            set(usersRef, users).then(() => {
+                currentUser = newUser;
+                saveUser();
+                updateUserInfo();
+                hideAuthModal();
+                showToast('微信登录成功，您的用户ID是：' + uniqueId);
+                // 加载帖子数据
+                loadPosts();
+            }).catch((error) => {
+                console.error('微信登录失败:', error);
+                showToast('微信登录失败，请检查网络连接');
+            });
     }).catch((error) => {
         console.error('微信登录失败:', error);
         showToast('微信登录失败，请检查网络连接');
@@ -363,17 +381,19 @@ function loginWithQQ() {
         };
         
         // 保存到Firebase
-        users[uniqueId] = newUser;
-        set(usersRef, users).then(() => {
-            currentUser = newUser;
-            saveUser();
-            updateUserInfo();
-            hideAuthModal();
-            showToast('QQ登录成功，您的用户ID是：' + uniqueId);
-        }).catch((error) => {
-            console.error('QQ登录失败:', error);
-            showToast('QQ登录失败，请检查网络连接');
-        });
+            users[uniqueId] = newUser;
+            set(usersRef, users).then(() => {
+                currentUser = newUser;
+                saveUser();
+                updateUserInfo();
+                hideAuthModal();
+                showToast('QQ登录成功，您的用户ID是：' + uniqueId);
+                // 加载帖子数据
+                loadPosts();
+            }).catch((error) => {
+                console.error('QQ登录失败:', error);
+                showToast('QQ登录失败，请检查网络连接');
+            });
     }).catch((error) => {
         console.error('QQ登录失败:', error);
         showToast('QQ登录失败，请检查网络连接');
