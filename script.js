@@ -11,6 +11,23 @@ let currentUser = null;
 let lastUpdateTime = 0;
 let updateInterval = null;
 
+// Firebase配置
+const firebaseConfig = {
+    apiKey: "AIzaSyD7W0wV7y2X4f2Z9vQ6X5q3X7y8z9vQ6X5",
+    authDomain: "treehole-website-12345.firebaseapp.com",
+    databaseURL: "https://treehole-website-12345-default-rtdb.firebaseio.com",
+    projectId: "treehole-website-12345",
+    storageBucket: "treehole-website-12345.appspot.com",
+    messagingSenderId: "123456789012",
+    appId: "1:123456789012:web:abcdef1234567890"
+};
+
+// 初始化Firebase
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const database = firebase.database();
+
 // 初始化
 function init() {
     // 从本地存储加载用户信息
@@ -141,23 +158,25 @@ function login() {
     const password = document.getElementById('login-password').value.trim();
     
     if (!username || !password) {
-        alert('请输入用户名和密码');
+        showToast('请输入用户名和密码');
         return;
     }
     
-    // 从本地存储加载用户数据
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    const user = users.find(u => u.username === username && u.password === password);
-    
-    if (user) {
-        currentUser = user;
-        saveUser();
-        updateUserInfo();
-        hideAuthModal();
-        alert('登录成功');
-    } else {
-        alert('用户名或密码错误');
-    }
+    // 从Firebase加载用户数据
+    database.ref('users').once('value', (snapshot) => {
+        const users = snapshot.val() || {};
+        const user = Object.values(users).find(u => u.username === username && u.password === password);
+        
+        if (user) {
+            currentUser = user;
+            saveUser();
+            updateUserInfo();
+            hideAuthModal();
+            showToast('登录成功');
+        } else {
+            showToast('用户名或密码错误');
+        }
+    });
 }
 
 // 注册
@@ -167,44 +186,47 @@ function register() {
     const confirmPassword = document.getElementById('register-confirm-password').value.trim();
     
     if (!username || !password || !confirmPassword) {
-        alert('请填写所有字段');
+        showToast('请填写所有字段');
         return;
     }
     
     if (password !== confirmPassword) {
-        alert('两次输入的密码不一致');
+        showToast('两次输入的密码不一致');
         return;
     }
     
-    // 从本地存储加载用户数据
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    
-    // 检查用户名是否已存在
-    if (users.some(u => u.username === username)) {
-        alert('用户名已存在');
-        return;
-    }
-    
-    // 生成唯一ID
-    const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    
-    // 创建新用户
-    const newUser = {
-        id: uniqueId,
-        username: username,
-        password: password,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff`,
-        createdAt: new Date().toLocaleString('zh-CN')
-    };
-    
-    users.push(newUser);
-    localStorage.setItem('treeholeUsers', JSON.stringify(users));
-    
-    currentUser = newUser;
-    saveUser();
-    updateUserInfo();
-    hideAuthModal();
-    alert('注册成功，您的用户ID是：' + uniqueId);
+    // 从Firebase加载用户数据
+    database.ref('users').once('value', (snapshot) => {
+        const users = snapshot.val() || {};
+        
+        // 检查用户名是否已存在
+        if (Object.values(users).some(u => u.username === username)) {
+            showToast('用户名已存在');
+            return;
+        }
+        
+        // 生成唯一ID
+        const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        
+        // 创建新用户
+        const newUser = {
+            id: uniqueId,
+            username: username,
+            password: password,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff`,
+            createdAt: new Date().toLocaleString('zh-CN')
+        };
+        
+        // 保存到Firebase
+        users[uniqueId] = newUser;
+        database.ref('users').set(users);
+        
+        currentUser = newUser;
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('注册成功，您的用户ID是：' + uniqueId);
+    });
 }
 
 // 微信登录
@@ -212,30 +234,35 @@ function loginWithWechat() {
     // 模拟微信登录
     let randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
     
-    // 检查用户名是否已存在
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    while (users.some(u => u.username === randomUsername)) {
-        randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
-    }
-    
-    // 生成唯一ID
-    const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    
-    const newUser = {
-        id: uniqueId,
-        username: randomUsername,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=07C160&color=fff`,
-        createdAt: new Date().toLocaleString('zh-CN')
-    };
-    
-    users.push(newUser);
-    localStorage.setItem('treeholeUsers', JSON.stringify(users));
-    
-    currentUser = newUser;
-    saveUser();
-    updateUserInfo();
-    hideAuthModal();
-    alert('微信登录成功，您的用户ID是：' + uniqueId);
+    // 从Firebase加载用户数据
+    database.ref('users').once('value', (snapshot) => {
+        const users = snapshot.val() || {};
+        
+        // 检查用户名是否已存在
+        while (Object.values(users).some(u => u.username === randomUsername)) {
+            randomUsername = '微信用户' + Math.floor(Math.random() * 10000);
+        }
+        
+        // 生成唯一ID
+        const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        
+        const newUser = {
+            id: uniqueId,
+            username: randomUsername,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=07C160&color=fff`,
+            createdAt: new Date().toLocaleString('zh-CN')
+        };
+        
+        // 保存到Firebase
+        users[uniqueId] = newUser;
+        database.ref('users').set(users);
+        
+        currentUser = newUser;
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('微信登录成功，您的用户ID是：' + uniqueId);
+    });
 }
 
 // QQ登录
@@ -243,30 +270,35 @@ function loginWithQQ() {
     // 模拟QQ登录
     let randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
     
-    // 检查用户名是否已存在
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    while (users.some(u => u.username === randomUsername)) {
-        randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
-    }
-    
-    // 生成唯一ID
-    const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    
-    const newUser = {
-        id: uniqueId,
-        username: randomUsername,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=12B7F5&color=fff`,
-        createdAt: new Date().toLocaleString('zh-CN')
-    };
-    
-    users.push(newUser);
-    localStorage.setItem('treeholeUsers', JSON.stringify(users));
-    
-    currentUser = newUser;
-    saveUser();
-    updateUserInfo();
-    hideAuthModal();
-    alert('QQ登录成功，您的用户ID是：' + uniqueId);
+    // 从Firebase加载用户数据
+    database.ref('users').once('value', (snapshot) => {
+        const users = snapshot.val() || {};
+        
+        // 检查用户名是否已存在
+        while (Object.values(users).some(u => u.username === randomUsername)) {
+            randomUsername = 'QQ用户' + Math.floor(Math.random() * 10000);
+        }
+        
+        // 生成唯一ID
+        const uniqueId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        
+        const newUser = {
+            id: uniqueId,
+            username: randomUsername,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(randomUsername)}&background=12B7F5&color=fff`,
+            createdAt: new Date().toLocaleString('zh-CN')
+        };
+        
+        // 保存到Firebase
+        users[uniqueId] = newUser;
+        database.ref('users').set(users);
+        
+        currentUser = newUser;
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('QQ登录成功，您的用户ID是：' + uniqueId);
+    });
 }
 
 // 退出登录
@@ -416,25 +448,27 @@ function startAutoUpdate() {
 
 // 检查更新
 function checkForUpdates() {
-    const storedPosts = localStorage.getItem('treeholePosts');
-    if (storedPosts) {
-        const updatedPosts = JSON.parse(storedPosts);
+    // 从Firebase加载最新的帖子
+    database.ref('posts').once('value', (snapshot) => {
+        const updatedPosts = snapshot.val() || {};
+        const updatedPostsArray = Object.values(updatedPosts);
+        
         // 检查是否有新内容
-        if (updatedPosts.length !== posts.length) {
-            posts = updatedPosts;
+        if (updatedPostsArray.length !== posts.length) {
+            posts = updatedPostsArray;
             renderPosts();
             showToast('有新内容更新');
         } else {
             // 检查是否有内容变化
             const currentPostsString = JSON.stringify(posts);
-            const updatedPostsString = JSON.stringify(updatedPosts);
+            const updatedPostsString = JSON.stringify(updatedPostsArray);
             if (currentPostsString !== updatedPostsString) {
-                posts = updatedPosts;
+                posts = updatedPostsArray;
                 renderPosts();
                 showToast('内容已更新');
             }
         }
-    }
+    });
 }
 
 // 停止自动更新
@@ -479,34 +513,39 @@ function loadFriends() {
     const friendsContainer = document.getElementById('friends-container');
     friendsContainer.innerHTML = '';
     
-    // 从本地存储加载好友数据
-    const friends = getFriends();
-    
-    if (friends.length === 0) {
-        friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
-        return;
-    }
-    
-    // 加载所有用户数据
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    
-    friends.forEach(friendId => {
-        const friend = users.find(u => u.id === friendId);
-        if (friend) {
-            const friendElement = document.createElement('div');
-            friendElement.className = 'friend-item';
-            friendElement.innerHTML = `
-                <img src="${friend.avatar}" alt="${friend.username}">
-                <div class="friend-item-info">
-                    <div class="friend-item-name">${friend.username}</div>
-                </div>
-                <div class="friend-item-actions">
-                    <button class="upload-btn" onclick="startChat(${friend.id})" style="padding: 5px 10px;">聊天</button>
-                    <button class="upload-btn" onclick="removeFriend(${friend.id})" style="padding: 5px 10px;">删除</button>
-                </div>
-            `;
-            friendsContainer.appendChild(friendElement);
+    // 从Firebase加载好友数据
+    database.ref('friends').once('value', (friendsSnapshot) => {
+        const friendsData = friendsSnapshot.val() || {};
+        const friends = friendsData[currentUser.id] || [];
+        
+        if (friends.length === 0) {
+            friendsContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
+            return;
         }
+        
+        // 从Firebase加载所有用户数据
+        database.ref('users').once('value', (usersSnapshot) => {
+            const users = usersSnapshot.val() || {};
+            
+            friends.forEach(friendId => {
+                const friend = users[friendId];
+                if (friend) {
+                    const friendElement = document.createElement('div');
+                    friendElement.className = 'friend-item';
+                    friendElement.innerHTML = `
+                        <img src="${friend.avatar}" alt="${friend.username}">
+                        <div class="friend-item-info">
+                            <div class="friend-item-name">${friend.username}</div>
+                        </div>
+                        <div class="friend-item-actions">
+                            <button class="upload-btn" onclick="startChat('${friend.id}')" style="padding: 5px 10px;">聊天</button>
+                            <button class="upload-btn" onclick="removeFriend('${friend.id}')" style="padding: 5px 10px;">删除</button>
+                        </div>
+                    `;
+                    friendsContainer.appendChild(friendElement);
+                }
+            });
+        });
     });
 }
 
@@ -515,39 +554,44 @@ function loadChatFriends() {
     const chatFriendsList = document.getElementById('chat-friends-list');
     chatFriendsList.innerHTML = '';
     
-    // 从本地存储加载好友数据
-    const friends = getFriends();
-    
-    if (friends.length === 0) {
-        chatFriendsList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
-        return;
-    }
-    
-    // 加载所有用户数据
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    
-    friends.forEach(friendId => {
-        const friend = users.find(u => u.id === friendId);
-        if (friend) {
-            const friendElement = document.createElement('div');
-            friendElement.className = 'chat-friend-item';
-            friendElement.dataset.friendId = friend.id;
-            friendElement.innerHTML = `
-                <img src="${friend.avatar}" alt="${friend.username}">
-                <span>${friend.username}</span>
-            `;
-            friendElement.addEventListener('click', function() {
-                // 移除其他好友的active状态
-                document.querySelectorAll('.chat-friend-item').forEach(item => {
-                    item.classList.remove('active');
-                });
-                // 添加当前好友的active状态
-                this.classList.add('active');
-                // 开始聊天
-                startChat(friend.id);
-            });
-            chatFriendsList.appendChild(friendElement);
+    // 从Firebase加载好友数据
+    database.ref('friends').once('value', (friendsSnapshot) => {
+        const friendsData = friendsSnapshot.val() || {};
+        const friends = friendsData[currentUser.id] || [];
+        
+        if (friends.length === 0) {
+            chatFriendsList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">还没有好友，快去添加吧！</p>';
+            return;
         }
+        
+        // 从Firebase加载所有用户数据
+        database.ref('users').once('value', (usersSnapshot) => {
+            const users = usersSnapshot.val() || {};
+            
+            friends.forEach(friendId => {
+                const friend = users[friendId];
+                if (friend) {
+                    const friendElement = document.createElement('div');
+                    friendElement.className = 'chat-friend-item';
+                    friendElement.dataset.friendId = friend.id;
+                    friendElement.innerHTML = `
+                        <img src="${friend.avatar}" alt="${friend.username}">
+                        <span>${friend.username}</span>
+                    `;
+                    friendElement.addEventListener('click', function() {
+                        // 移除其他好友的active状态
+                        document.querySelectorAll('.chat-friend-item').forEach(item => {
+                            item.classList.remove('active');
+                        });
+                        // 添加当前好友的active状态
+                        this.classList.add('active');
+                        // 开始聊天
+                        startChat(friend.id);
+                    });
+                    chatFriendsList.appendChild(friendElement);
+                }
+            });
+        });
     });
 }
 
@@ -567,54 +611,79 @@ function addFriend() {
     const user = users.find(u => (u.username === input || u.id === input) && u.id !== currentUser.id);
     
     if (!user) {
-        alert('未找到该用户');
+        showToast('未找到该用户');
         return;
     }
     
-    // 检查是否已经是好友
-    const friends = getFriends();
-    if (friends.includes(user.id)) {
-        alert('已经是好友了');
-        return;
-    }
-    
-    // 添加好友
-    friends.push(user.id);
-    localStorage.setItem('treeholeFriends_' + currentUser.id, JSON.stringify(friends));
-    
-    showToast('添加好友成功');
-    document.getElementById('add-friend-username').value = '';
-    loadFriends();
+    // 从Firebase加载好友数据
+    database.ref('friends').once('value', (friendsSnapshot) => {
+        const friendsData = friendsSnapshot.val() || {};
+        const userFriends = friendsData[currentUser.id] || [];
+        
+        // 检查是否已经是好友
+        if (userFriends.includes(user.id)) {
+            showToast('已经是好友了');
+            return;
+        }
+        
+        // 添加好友
+        userFriends.push(user.id);
+        friendsData[currentUser.id] = userFriends;
+        
+        // 保存到Firebase
+        database.ref('friends').set(friendsData);
+        
+        showToast('添加好友成功');
+        document.getElementById('add-friend-username').value = '';
+        loadFriends();
+    });
 }
 
 // 删除好友
 function removeFriend(friendId) {
     if (confirm('确定要删除这个好友吗？')) {
-        let friends = getFriends();
-        friends = friends.filter(id => id !== friendId);
-        localStorage.setItem('treeholeFriends_' + currentUser.id, JSON.stringify(friends));
-        loadFriends();
-        loadChatFriends();
-        showToast('好友已删除');
+        // 从Firebase加载好友数据
+        database.ref('friends').once('value', (friendsSnapshot) => {
+            const friendsData = friendsSnapshot.val() || {};
+            let userFriends = friendsData[currentUser.id] || [];
+            
+            // 删除好友
+            userFriends = userFriends.filter(id => id !== friendId);
+            friendsData[currentUser.id] = userFriends;
+            
+            // 保存到Firebase
+            database.ref('friends').set(friendsData);
+            
+            loadFriends();
+            loadChatFriends();
+            showToast('好友已删除');
+        });
     }
 }
 
 // 获取好友列表
 function getFriends() {
-    const friends = localStorage.getItem('treeholeFriends_' + currentUser.id);
-    return friends ? JSON.parse(friends) : [];
+    // 从Firebase加载好友数据
+    let friends = [];
+    database.ref('friends').once('value', (snapshot) => {
+        const friendsData = snapshot.val() || {};
+        friends = friendsData[currentUser.id] || [];
+    });
+    return friends;
 }
 
 // 开始聊天
 function startChat(friendId) {
-    // 加载所有用户数据
-    const users = JSON.parse(localStorage.getItem('treeholeUsers')) || [];
-    const friend = users.find(u => u.id === friendId);
-    
-    if (friend) {
-        document.getElementById('chat-friend-name').textContent = friend.username;
-        loadChatMessages(friendId);
-    }
+    // 从Firebase加载所有用户数据
+    database.ref('users').once('value', (snapshot) => {
+        const users = snapshot.val() || {};
+        const friend = users[friendId];
+        
+        if (friend) {
+            document.getElementById('chat-friend-name').textContent = friend.username;
+            loadChatMessages(friendId);
+        }
+    });
 }
 
 // 加载聊天消息
@@ -622,22 +691,24 @@ function loadChatMessages(friendId) {
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.innerHTML = '';
     
-    // 从本地存储加载聊天记录
-    const chatKey = 'treeholeChat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
-    const messages = JSON.parse(localStorage.getItem(chatKey)) || [];
-    
-    messages.forEach(message => {
-        const messageElement = document.createElement('div');
-        messageElement.className = 'chat-message' + (message.senderId === currentUser.id ? ' self' : '');
-        messageElement.innerHTML = `
-            <div class="chat-message-content">${message.content}</div>
-            <div class="chat-message-time">${message.timestamp}</div>
-        `;
-        chatMessages.appendChild(messageElement);
+    // 从Firebase加载聊天记录
+    const chatKey = 'chat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
+    database.ref('chats').child(chatKey).once('value', (snapshot) => {
+        const messages = snapshot.val() || [];
+        
+        messages.forEach(message => {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'chat-message' + (message.senderId === currentUser.id ? ' self' : '');
+            messageElement.innerHTML = `
+                <div class="chat-message-content">${message.content}</div>
+                <div class="chat-message-time">${message.timestamp}</div>
+            `;
+            chatMessages.appendChild(messageElement);
+        });
+        
+        // 滚动到底部
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     });
-    
-    // 滚动到底部
-    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 // 搜索好友
@@ -700,34 +771,36 @@ function sendMessage() {
     // 获取当前聊天的好友
     const activeFriend = document.querySelector('.chat-friend-item.active');
     if (!activeFriend) {
-        alert('请选择一个好友开始聊天');
+        showToast('请选择一个好友开始聊天');
         return;
     }
     
-    const friendId = parseInt(activeFriend.dataset.friendId);
+    const friendId = activeFriend.dataset.friendId;
     
     // 创建消息
     const message = {
-        id: Date.now(),
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         senderId: currentUser.id,
         content: content,
         timestamp: new Date().toLocaleString('zh-CN')
     };
     
-    // 保存消息
-    const chatKey = 'treeholeChat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
-    const messages = JSON.parse(localStorage.getItem(chatKey)) || [];
-    messages.push(message);
-    localStorage.setItem(chatKey, JSON.stringify(messages));
-    
-    // 清空输入框
-    chatInput.value = '';
-    
-    // 重新加载消息
-    loadChatMessages(friendId);
-    
-    // 显示发送成功提示
-    showToast('消息发送成功');
+    // 保存消息到Firebase
+    const chatKey = 'chat_' + Math.min(currentUser.id, friendId) + '_' + Math.max(currentUser.id, friendId);
+    database.ref('chats').child(chatKey).once('value', (snapshot) => {
+        const messages = snapshot.val() || [];
+        messages.push(message);
+        database.ref('chats').child(chatKey).set(messages);
+        
+        // 清空输入框
+        chatInput.value = '';
+        
+        // 重新加载消息
+        loadChatMessages(friendId);
+        
+        // 显示发送成功提示
+        showToast('消息发送成功');
+    });
 }
 
 // 处理图片上传
@@ -840,29 +913,33 @@ function handlePost() {
         }
     };
     
-    // 从本地存储加载最新的帖子（确保不会覆盖其他用户的帖子）
-    const latestPosts = JSON.parse(localStorage.getItem('treeholePosts')) || [];
-    latestPosts.unshift(newPost);
-    
-    // 保存到本地存储
-    localStorage.setItem('treeholePosts', JSON.stringify(latestPosts));
-    
-    // 更新本地帖子数组
-    posts = latestPosts;
-    
-    // 渲染帖子
-    renderPosts();
-    
-    // 清空表单
-    document.getElementById('post-text').value = '';
-    currentImage = null;
-    currentVideo = null;
-    currentVoice = null;
-    document.getElementById('image-upload').value = '';
-    document.getElementById('video-upload').value = '';
-    
-    // 显示发布成功提示
-    showToast('发布成功');
+    // 从Firebase加载最新的帖子（确保不会覆盖其他用户的帖子）
+    database.ref('posts').once('value', (snapshot) => {
+        const latestPosts = snapshot.val() || {};
+        
+        // 添加新帖子
+        latestPosts[newPost.id] = newPost;
+        
+        // 保存到Firebase
+        database.ref('posts').set(latestPosts);
+        
+        // 更新本地帖子数组
+        posts = Object.values(latestPosts);
+        
+        // 渲染帖子
+        renderPosts();
+        
+        // 清空表单
+        document.getElementById('post-text').value = '';
+        currentImage = null;
+        currentVideo = null;
+        currentVoice = null;
+        document.getElementById('image-upload').value = '';
+        document.getElementById('video-upload').value = '';
+        
+        // 显示发布成功提示
+        showToast('发布成功');
+    });
 }
 
 // 渲染帖子
@@ -977,41 +1054,44 @@ function toggleLike(postId) {
         return;
     }
     
-    // 从本地存储加载最新的帖子
-    const latestPosts = JSON.parse(localStorage.getItem('treeholePosts')) || [];
-    const post = latestPosts.find(p => p.id === postId);
-    
-    if (post) {
-        // 检查是否已经点过赞
-        if (!post.likedBy) {
-            post.likedBy = [];
-        }
+    // 从Firebase加载最新的帖子
+    database.ref('posts').once('value', (snapshot) => {
+        const latestPosts = snapshot.val() || {};
+        const post = latestPosts[postId];
         
-        if (!post.likedBy.includes(currentUser.id)) {
-            post.likedBy.push(currentUser.id);
-            post.likes++;
-            
-            // 保存到本地存储
-            localStorage.setItem('treeholePosts', JSON.stringify(latestPosts));
-            
-            // 更新本地帖子数组
-            posts = latestPosts;
-            
-            // 渲染帖子
-            renderPosts();
-            
-            // 更新点赞榜
-            const activeTab = document.querySelector('.ranking-tab.active');
-            if (activeTab && activeTab.textContent.includes('点赞')) {
-                showRanking('likes');
+        if (post) {
+            // 检查是否已经点过赞
+            if (!post.likedBy) {
+                post.likedBy = [];
             }
             
-            // 显示点赞成功提示
-            showToast('点赞成功');
-        } else {
-            showToast('你已经点过赞了');
+            if (!post.likedBy.includes(currentUser.id)) {
+                post.likedBy.push(currentUser.id);
+                post.likes++;
+                
+                // 保存到Firebase
+                latestPosts[postId] = post;
+                database.ref('posts').set(latestPosts);
+                
+                // 更新本地帖子数组
+                posts = Object.values(latestPosts);
+                
+                // 渲染帖子
+                renderPosts();
+                
+                // 更新点赞榜
+                const activeTab = document.querySelector('.ranking-tab.active');
+                if (activeTab && activeTab.textContent.includes('点赞')) {
+                    showRanking('likes');
+                }
+                
+                // 显示点赞成功提示
+                showToast('点赞成功');
+            } else {
+                showToast('你已经点过赞了');
+            }
         }
-    }
+    });
 }
 
 // 删除帖子
@@ -1023,48 +1103,60 @@ function deletePost(postId) {
         return;
     }
     
-    // 从本地存储加载最新的帖子
-    const latestPosts = JSON.parse(localStorage.getItem('treeholePosts')) || [];
-    const post = latestPosts.find(p => p.id === postId);
-    
-    // 检查是否是帖子的作者
-    if (!post || !post.user || post.user.id !== currentUser.id) {
-        showToast('你没有权限删除这条帖子');
-        return;
-    }
-    
-    if (confirm('确定要删除这条分享吗？')) {
-        const updatedPosts = latestPosts.filter(p => p.id !== postId);
+    // 从Firebase加载最新的帖子
+    database.ref('posts').once('value', (snapshot) => {
+        const latestPosts = snapshot.val() || {};
+        const post = latestPosts[postId];
         
-        // 保存到本地存储
-        localStorage.setItem('treeholePosts', JSON.stringify(updatedPosts));
+        // 检查是否是帖子的作者
+        if (!post || !post.user || post.user.id !== currentUser.id) {
+            showToast('你没有权限删除这条帖子');
+            return;
+        }
         
-        // 更新本地帖子数组
-        posts = updatedPosts;
-        
+        if (confirm('确定要删除这条分享吗？')) {
+            // 从对象中删除帖子
+            delete latestPosts[postId];
+            
+            // 保存到Firebase
+            database.ref('posts').set(latestPosts);
+            
+            // 更新本地帖子数组
+            posts = Object.values(latestPosts);
+            
+            // 渲染帖子
+            renderPosts();
+            
+            // 显示删除成功提示
+            showToast('删除成功');
+        }
+    });
+}
+
+// 保存帖子到Firebase
+function savePosts() {
+    // 将帖子数组转换为对象，使用帖子ID作为键
+    const postsObj = {};
+    posts.forEach(post => {
+        postsObj[post.id] = post;
+    });
+    database.ref('posts').set(postsObj);
+}
+
+// 从Firebase加载帖子
+function loadPosts() {
+    database.ref('posts').once('value', (snapshot) => {
+        const storedPosts = snapshot.val();
+        if (storedPosts) {
+            posts = Object.values(storedPosts);
+        } else {
+            // 初始化空帖子数组
+            posts = [];
+            database.ref('posts').set({});
+        }
         // 渲染帖子
         renderPosts();
-        
-        // 显示删除成功提示
-        showToast('删除成功');
-    }
-}
-
-// 保存帖子到本地存储
-function savePosts() {
-    localStorage.setItem('treeholePosts', JSON.stringify(posts));
-}
-
-// 从本地存储加载帖子
-function loadPosts() {
-    const storedPosts = localStorage.getItem('treeholePosts');
-    if (storedPosts) {
-        posts = JSON.parse(storedPosts);
-    } else {
-        // 初始化空帖子数组
-        posts = [];
-        localStorage.setItem('treeholePosts', JSON.stringify(posts));
-    }
+    });
 }
 
 // 导出数据
@@ -1119,44 +1211,47 @@ function addComment(postId) {
         return;
     }
     
-    // 从本地存储加载最新的帖子
-    const latestPosts = JSON.parse(localStorage.getItem('treeholePosts')) || [];
-    const post = latestPosts.find(p => p.id === postId);
-    
-    if (post) {
-        if (!post.comments) {
-            post.comments = [];
-        }
+    // 从Firebase加载最新的帖子
+    database.ref('posts').once('value', (snapshot) => {
+        const latestPosts = snapshot.val() || {};
+        const post = latestPosts[postId];
         
-        const newComment = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            text: commentText,
-            timestamp: new Date().toLocaleString('zh-CN'),
-            user: {
-                id: currentUser.id,
-                username: currentUser.username,
-                avatar: currentUser.avatar
+        if (post) {
+            if (!post.comments) {
+                post.comments = [];
             }
-        };
-        
-        post.comments.push(newComment);
-        
-        // 保存到本地存储
-        localStorage.setItem('treeholePosts', JSON.stringify(latestPosts));
-        
-        // 更新本地帖子数组
-        posts = latestPosts;
-        
-        // 渲染帖子
-        renderPosts();
-        showRanking('comments'); // 更新评论榜
-        
-        // 清空评论输入框
-        commentInput.value = '';
-        
-        // 显示评论成功提示
-        showToast('评论成功');
-    }
+            
+            const newComment = {
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                text: commentText,
+                timestamp: new Date().toLocaleString('zh-CN'),
+                user: {
+                    id: currentUser.id,
+                    username: currentUser.username,
+                    avatar: currentUser.avatar
+                }
+            };
+            
+            post.comments.push(newComment);
+            
+            // 保存到Firebase
+            latestPosts[postId] = post;
+            database.ref('posts').set(latestPosts);
+            
+            // 更新本地帖子数组
+            posts = Object.values(latestPosts);
+            
+            // 渲染帖子
+            renderPosts();
+            showRanking('comments'); // 更新评论榜
+            
+            // 清空评论输入框
+            commentInput.value = '';
+            
+            // 显示评论成功提示
+            showToast('评论成功');
+        }
+    });
 }
 
 // 显示排行榜
