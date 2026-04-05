@@ -280,7 +280,6 @@ async function login() {
 
 async function register() {
     const username = document.getElementById('register-username').value.trim();
-    const email = document.getElementById('register-email')?.value.trim() || '';
     const password = document.getElementById('register-password').value.trim();
     const confirmPassword = document.getElementById('register-confirm-password').value.trim();
     
@@ -312,6 +311,22 @@ async function register() {
     );
     
     try {
+        // 先检查用户名是否已存在
+        const checkPromise = supabase
+            .from('users')
+            .select('username')
+            .eq('username', username)
+            .single();
+        
+        const { data: existingUser } = await Promise.race([checkPromise, timeoutPromise]);
+        
+        if (existingUser) {
+            showToast('用户名已存在', 'error');
+            showLoading(false);
+            return;
+        }
+        
+        // 创建新用户
         const userId = generateId();
         const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff&size=128`;
         
@@ -321,14 +336,38 @@ async function register() {
                 .insert({
                     id: userId,
                     username: username,
-                    avatar: avatar,
-                    email: email
+                    avatar: avatar
                 }),
             timeoutPromise
         ]);
         
         if (error) {
             if (error.code === '23505') {
+                showToast('用户名已存在', 'error');
+            } else {
+                showToast('注册失败: ' + error.message, 'error');
+            }
+            showLoading(false);
+            return;
+        }
+        
+        // 存储密码到本地
+        localStorage.setItem(`pwd_${userId}`, password);
+        
+        currentUser = { id: userId, username, avatar };
+        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        
+        updateUserInfo();
+        hideAuthModal();
+        showToast('注册成功！您的用户ID: ' + userId, 'success');
+        
+    } catch (error) {
+        console.error('注册失败:', error);
+        showToast('注册失败，请检查网络', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
                 showToast('用户名已存在', 'error');
                 showLoading(false);
                 return;
