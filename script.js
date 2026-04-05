@@ -581,46 +581,57 @@ async function saveSettings() {
 // ==================== 帖子 ====================
 async function loadPosts() {
     try {
+        // 先获取帖子（不包含详细统计）
         const { data, error } = await supabase
             .from('posts')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(50);
+            .limit(30); // 减少数量提高速度
         
         if (error) throw error;
         
-        // 获取每条帖子的点赞数和评论数
-        posts = await Promise.all(data.map(async (post) => {
-            const [likesRes, commentsRes] = await Promise.all([
-                supabase.from('likes').select('id', { count: 'exact' }).eq('post_id', post.id),
-                supabase.from('comments').select('*').eq('post_id', post.id)
-            ]);
-            
-            // 检查当前用户是否点赞
-            let liked = false;
-            if (currentUser) {
-                const { data: likeData } = await supabase
-                    .from('likes')
-                    .select('id')
-                    .eq('post_id', post.id)
-                    .eq('user_id', currentUser.id)
-                    .single();
-                liked = !!likeData;
-            }
-            
-            return {
-                ...post,
-                likes: likesRes.count || 0,
-                liked,
-                comments: commentsRes.data || []
-            };
+        if (!data || data.length === 0) {
+            posts = [];
+            renderPosts();
+            return;
+        }
+        
+        // 简化处理：只获取基本的点赞和评论数，不逐个查询
+        posts = data.map(post => ({
+            ...post,
+            likes: post.likes || 0,
+            views: post.views || 0,
+            liked: false,
+            comments: post.comments || []
         }));
+        
+        // 检查当前用户点赞状态（批量查询）
+        if (currentUser && posts.length > 0) {
+            try {
+                const postIds = posts.map(p => p.id);
+                const { data: likesData } = await supabase
+                    .from('likes')
+                    .select('post_id')
+                    .eq('user_id', currentUser.id)
+                    .in('post_id', postIds);
+                
+                if (likesData) {
+                    const likedPostIds = new Set(likesData.map(l => l.post_id));
+                    posts = posts.map(p => ({
+                        ...p,
+                        liked: likedPostIds.has(p.id)
+                    }));
+                }
+            } catch (e) {
+                console.warn('获取点赞状态失败', e);
+            }
+        }
         
         renderPosts();
         
     } catch (error) {
         console.error('加载帖子失败:', error);
-        showToast('加载失败', 'error');
+        showToast('加载失败，请刷新页面', 'error');
     }
 }
 
