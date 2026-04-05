@@ -77,9 +77,6 @@
                         <input type="password" id="login-password" placeholder="请输入密码">
                     </div>
                     <button id="submit-login" class="auth-btn">登录</button>
-                    <div style="text-align:center;margin-top:15px;">
-                        <a href="#" onclick="showForgotPassword(event)" style="color:#667eea;font-size:0.9rem;">忘记密码？</a>
-                    </div>
                 </div>
                 
                 <!-- 注册表单 -->
@@ -179,60 +176,6 @@
         </div>
     </div>
 
-    <!-- 忘记密码模态框 -->
-    <div id="forgot-password-modal" class="modal">
-        <div class="modal-content" style="max-width: 400px;">
-            <div class="modal-header">
-                <h3>找回密码</h3>
-                <span class="close-btn" onclick="closeForgotPasswordModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div id="forgot-step1">
-                    <div class="form-group">
-                        <label>请输入用户名</label>
-                        <input type="text" id="forgot-username" placeholder="请输入用户名">
-                    </div>
-                    <button id="forgot-next-btn" class="auth-btn" onclick="forgotPasswordStep1()">下一步</button>
-                </div>
-                <div id="forgot-step2" style="display:none;">
-                    <div class="form-group">
-                        <label>请输入新密码</label>
-                        <input type="password" id="forgot-new-password" placeholder="请输入新密码（至少6位）">
-                    </div>
-                    <div class="form-group">
-                        <label>确认新密码</label>
-                        <input type="password" id="forgot-confirm-password" placeholder="请确认新密码">
-                    </div>
-                    <button class="auth-btn" onclick="resetPassword()">重置密码</button>
-                </div>
-                <div id="forgot-success" style="display:none;text-align:center;padding:20px;">
-                    <div style="font-size:3rem;margin-bottom:15px;">✅</div>
-                    <p style="color:#28a745;font-size:1.1rem;">密码重置成功！</p>
-                    <p style="color:#999;margin-top:10px;">请使用新密码登录</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 用户ID提示模态框 -->
-    <div id="userid-hint-modal" class="modal">
-        <div class="modal-content" style="max-width: 350px;">
-            <div class="modal-header">
-                <h3>📋 用户ID说明</h3>
-                <span class="close-btn" onclick="document.getElementById('userid-hint-modal').style.display='none'">&times;</span>
-            </div>
-            <div class="modal-body" style="text-align:center;">
-                <p style="margin-bottom:15px;">每个用户都有一个唯一的ID，用于：</p>
-                <ul style="text-align:left;padding-left:20px;margin-bottom:15px;">
-                    <li style="margin-bottom:8px;">添加好友</li>
-                    <li style="margin-bottom:8px;">找回密码</li>
-                    <li style="margin-bottom:8px;">账号申诉</li>
-                </ul>
-                <p style="color:#667eea;font-size:0.9rem;">请牢记您的用户ID！</p>
-            </div>
-        </div>
-    </div>
-
     <main>
         <div class="container">
             <!-- 下拉刷新区域 -->
@@ -310,9 +253,6 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2>最新分享</h2>
                     <div style="display: flex; gap: 10px;">
-                        <button onclick="openSearchModal()" class="upload-btn" style="padding: 8px 15px;">
-                            <i class="fas fa-search"></i> 搜索
-                        </button>
                         <button onclick="exportData()" class="upload-btn" style="padding: 8px 15px;">
                             <i class="fas fa-download"></i> 导出
                         </button>
