@@ -47,47 +47,70 @@ function saveViewedPosts() {
 async function init() {
     showLoading(true);
     
+    // 添加总体超时保护
+    const initTimeout = setTimeout(() => {
+        console.log('初始化超时，关闭加载遮罩');
+        showLoading(false);
+        showToast('加载超时，请刷新页面', 'error');
+    }, 20000);
+    
     try {
         // 检查本地存储的用户
         const savedUser = localStorage.getItem('treeholeUser');
         if (savedUser) {
             try {
                 currentUser = JSON.parse(savedUser);
-                // 验证用户是否还存在
-                const { data } = await supabase.from('users').select('*').eq('id', currentUser.id).single();
-                if (!data) {
-                    currentUser = null;
-                    localStorage.removeItem('treeholeUser');
-                } else {
-                    currentUser = data;
+                // 验证用户是否还存在（添加超时）
+                const userPromise = supabase.from('users').select('*').eq('id', currentUser.id).single();
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('用户验证超时')), 10000));
+                
+                try {
+                    const { data } = await Promise.race([userPromise, timeoutPromise]);
+                    if (!data) {
+                        currentUser = null;
+                        localStorage.removeItem('treeholeUser');
+                    } else {
+                        currentUser = data;
+                    }
+                } catch (e) {
+                    console.warn('用户验证失败，使用缓存用户', e);
+                    // 不阻止继续，使用缓存的用户
                 }
             } catch (e) {
-                console.error('用户验证失败:', e);
+                console.error('用户解析失败:', e);
                 currentUser = null;
                 localStorage.removeItem('treeholeUser');
             }
         }
         
         updateUserInfo();
-        loadViewedPosts(); // 加载用户浏览记录
+        loadViewedPosts();
         
+        // 加载帖子（添加超时保护）
         try {
-            await loadPosts();
+            const postsPromise = loadPosts();
+            const postsTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('帖子加载超时')), 15000));
+            await Promise.race([postsPromise, postsTimeout]);
         } catch (e) {
             console.error('加载帖子失败:', e);
-            showToast('加载失败，请刷新页面', 'error');
         }
-        bindEvents();
-        bindAuthEvents();
-        setupRealtimeSubscription();
         
-        // 初始化排行榜
-        setTimeout(() => showRanking('likes'), 500);
+        // 绑定事件（不阻塞）
+        try { bindEvents(); } catch (e) { console.error('bindEvents失败:', e); }
+        try { bindAuthEvents(); } catch (e) { console.error('bindAuthEvents失败:', e); }
+        
+        // 实时订阅（失败不阻塞）
+        try { setupRealtimeSubscription(); } catch (e) { console.error('实时订阅失败:', e); }
+        
+        // 排行榜
+        setTimeout(() => {
+            try { showRanking('likes'); } catch (e) {}
+        }, 1000);
         
     } catch (error) {
         console.error('初始化失败:', error);
-        showToast('加载失败，请刷新页面', 'error');
     } finally {
+        clearTimeout(initTimeout);
         showLoading(false);
     }
 }
