@@ -17,8 +17,31 @@ let currentVideo = null;
 let currentVoice = null;
 let mediaRecorder = null;
 let audioChunks = [];
-let viewedPosts = new Set();
+let viewedPosts = new Set(); // 已浏览的帖子ID（基于用户）
 let subscriptions = [];
+
+// 加载浏览记录
+function loadViewedPosts() {
+    if (!currentUser) return;
+    try {
+        const stored = localStorage.getItem(`viewed_${currentUser.id}`);
+        if (stored) {
+            viewedPosts = new Set(JSON.parse(stored));
+        }
+    } catch (e) {
+        console.error('加载浏览记录失败:', e);
+    }
+}
+
+// 保存浏览记录
+function saveViewedPosts() {
+    if (!currentUser) return;
+    try {
+        localStorage.setItem(`viewed_${currentUser.id}`, JSON.stringify([...viewedPosts]));
+    } catch (e) {
+        console.error('保存浏览记录失败:', e);
+    }
+}
 
 // ==================== 初始化 ====================
 async function init() {
@@ -40,6 +63,7 @@ async function init() {
         }
         
         updateUserInfo();
+        loadViewedPosts(); // 加载用户浏览记录
         await loadPosts();
         bindEvents();
         bindAuthEvents();
@@ -592,6 +616,8 @@ async function incrementViewCount(postId) {
                 .eq('id', postId);
             // 更新本地数据
             post.views = newViews;
+            // 保存浏览记录
+            saveViewedPosts();
         }
     } catch (error) {
         console.error('浏览量更新失败:', error);
