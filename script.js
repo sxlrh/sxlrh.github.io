@@ -228,23 +228,31 @@ async function login() {
     
     showLoading(true);
     
+    // 添加超时保护
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('请求超时')), 15000)
+    );
+    
     try {
-        // 简单密码验证（实际项目应该用 Supabase Auth）
-        const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('username', username)
-            .single();
+        const { data, error } = await Promise.race([
+            supabase
+                .from('users')
+                .select('*')
+                .eq('username', username)
+                .single(),
+            timeoutPromise
+        ]);
         
         if (error || !data) {
             showToast('用户名不存在', 'error');
+            showLoading(false);
             return;
         }
         
-        // 验证密码（存在本地）
         const storedPassword = localStorage.getItem(`pwd_${data.id}`);
         if (storedPassword && storedPassword !== password) {
             showToast('密码错误', 'error');
+            showLoading(false);
             return;
         }
         
@@ -256,7 +264,7 @@ async function login() {
         
     } catch (error) {
         console.error('登录失败:', error);
-        showToast('登录失败，请重试', 'error');
+        showToast('登录失败，请检查网络', 'error');
     } finally {
         showLoading(false);
     }
@@ -290,25 +298,35 @@ async function register() {
     
     showLoading(true);
     
+    // 添加超时保护
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('请求超时')), 15000)
+    );
+    
     try {
         const userId = generateId();
         const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff&size=128`;
         
-        const { error } = await supabase
-            .from('users')
-            .insert({
-                id: userId,
-                username: username,
-                avatar: avatar,
-                email: email
-            });
+        const { error } = await Promise.race([
+            supabase
+                .from('users')
+                .insert({
+                    id: userId,
+                    username: username,
+                    avatar: avatar,
+                    email: email
+                }),
+            timeoutPromise
+        ]);
         
         if (error) {
             if (error.code === '23505') {
                 showToast('用户名已存在', 'error');
-            } else {
-                showToast('注册失败: ' + error.message, 'error');
+                showLoading(false);
+                return;
             }
+            showToast('注册失败: ' + error.message, 'error');
+            showLoading(false);
             return;
         }
         
@@ -324,7 +342,7 @@ async function register() {
         
     } catch (error) {
         console.error('注册失败:', error);
-        showToast('注册失败，请重试', 'error');
+        showToast('注册失败，请检查网络', 'error');
     } finally {
         showLoading(false);
     }
@@ -3834,20 +3852,28 @@ const originalLoginWithWechat = window.loginWithWechat;
 window.loginWithWechat = async function() {
     const username = '微信用户' + Math.floor(Math.random() * 100000);
     showLoading(true);
+    
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('请求超时')), 15000)
+    );
+    
     try {
         const userId = generateId();
         const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=07C160&color=fff&size=128`;
         
-        const { error } = await supabase
-            .from('users')
-            .insert({ id: userId, username, avatar });
+        const { error } = await Promise.race([
+            supabase
+                .from('users')
+                .insert({ id: userId, username, avatar }),
+            timeoutPromise
+        ]);
         
         if (error) {
             showToast('登录失败，请重试', 'error');
+            showLoading(false);
             return;
         }
         
-        // 第三方登录不需要本地密码
         currentUser = { id: userId, username, avatar };
         saveUser();
         updateUserInfo();
@@ -3855,7 +3881,7 @@ window.loginWithWechat = async function() {
         showToast('登录成功', 'success');
     } catch (error) {
         console.error(error);
-        showToast('登录失败', 'error');
+        showToast('登录失败，请检查网络', 'error');
     } finally {
         showLoading(false);
     }
@@ -3865,16 +3891,25 @@ const originalLoginWithQQ = window.loginWithQQ;
 window.loginWithQQ = async function() {
     const username = 'QQ用户' + Math.floor(Math.random() * 100000);
     showLoading(true);
+    
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('请求超时')), 15000)
+    );
+    
     try {
         const userId = generateId();
         const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=12B7F5&color=fff&size=128`;
         
-        const { error } = await supabase
-            .from('users')
-            .insert({ id: userId, username, avatar });
+        const { error } = await Promise.race([
+            supabase
+                .from('users')
+                .insert({ id: userId, username, avatar }),
+            timeoutPromise
+        ]);
         
         if (error) {
             showToast('登录失败，请重试', 'error');
+            showLoading(false);
             return;
         }
         
@@ -3885,7 +3920,7 @@ window.loginWithQQ = async function() {
         showToast('登录成功', 'success');
     } catch (error) {
         console.error(error);
-        showToast('登录失败', 'error');
+        showToast('登录失败，请检查网络', 'error');
     } finally {
         showLoading(false);
     }
