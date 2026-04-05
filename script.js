@@ -51,20 +51,32 @@ async function init() {
         // 检查本地存储的用户
         const savedUser = localStorage.getItem('treeholeUser');
         if (savedUser) {
-            currentUser = JSON.parse(savedUser);
-            // 验证用户是否还存在
-            const { data } = await supabase.from('users').select('*').eq('id', currentUser.id).single();
-            if (!data) {
+            try {
+                currentUser = JSON.parse(savedUser);
+                // 验证用户是否还存在
+                const { data } = await supabase.from('users').select('*').eq('id', currentUser.id).single();
+                if (!data) {
+                    currentUser = null;
+                    localStorage.removeItem('treeholeUser');
+                } else {
+                    currentUser = data;
+                }
+            } catch (e) {
+                console.error('用户验证失败:', e);
                 currentUser = null;
                 localStorage.removeItem('treeholeUser');
-            } else {
-                currentUser = data;
             }
         }
         
         updateUserInfo();
         loadViewedPosts(); // 加载用户浏览记录
-        await loadPosts();
+        
+        try {
+            await loadPosts();
+        } catch (e) {
+            console.error('加载帖子失败:', e);
+            showToast('加载失败，请刷新页面', 'error');
+        }
         bindEvents();
         bindAuthEvents();
         setupRealtimeSubscription();
