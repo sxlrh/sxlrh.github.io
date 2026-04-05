@@ -1810,6 +1810,7 @@ window.addEventListener('DOMContentLoaded', () => {
         setupDoubleTapLike();
         setupLongPressSave();
         setupAnonymousToggle();
+        setupFavoritesPage();
     }, 1000);
 });
 
@@ -3261,3 +3262,272 @@ createPostElement = function(post) {
     
     return result;
 };
+
+// ==================== 个人收藏页 ====================
+let favoritesModal = null;
+
+function setupFavoritesPage() {
+    const main = document.querySelector('main .container');
+    if (!main) return;
+    
+    // 在最新分享区域前添加收藏入口
+    const latestSection = document.querySelector('.content-section:nth-child(3)');
+    if (!latestSection) return;
+    
+    const favLink = document.createElement('div');
+    favLink.style.cssText = 'text-align:center;margin:20px 0;';
+    favLink.innerHTML = `
+        <button onclick="openFavoritesPage()" class="upload-btn" style="padding:12px 30px;font-size:1rem;">
+            <i class="fas fa-bookmark"></i> 我的收藏
+        </button>
+    `;
+    latestSection.before(favLink);
+}
+
+window.openFavoritesPage = async function() {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    if (!favoritesModal) {
+        favoritesModal = document.createElement('div');
+        favoritesModal.id = 'favorites-modal';
+        favoritesModal.className = 'modal';
+        favoritesModal.innerHTML = `
+            <div class="modal-content" style="max-width: 700px;">
+                <div class="modal-header">
+                    <h3>⭐ 我的收藏</h3>
+                    <span class="close-btn" onclick="closeFavoritesPage()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="favorites-tabs" style="display:flex;gap:10px;margin-bottom:20px;">
+                        <button class="fav-tab active" onclick="showFavoritesTab('favorites')">收藏的帖子</button>
+                        <button class="fav-tab" onclick="showFavoritesTab('likes')">点赞的帖子</button>
+                    </div>
+                    <div id="favorites-list" style="max-height: 500px; overflow-y: auto;">
+                        <p style="text-align:center;color:#999;padding:40px;">加载中...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(favoritesModal);
+        
+        // 添加样式
+        const style = document.createElement('style');
+        style.textContent = `
+            .fav-tab { padding: 8px 20px; background: #f8f9fa; border: 2px solid #e0e0e0; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; }
+            .fav-tab:hover { border-color: #667eea; }
+            .fav-tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: #667eea; }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    favoritesModal.style.display = 'block';
+    showFavoritesTab('favorites');
+};
+
+window.closeFavoritesPage = function() {
+    if (favoritesModal) favoritesModal.style.display = 'none';
+};
+
+window.showFavoritesTab = async function(tab) {
+    document.querySelectorAll('.fav-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    const container = document.getElementById('favorites-list');
+    container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">加载中...</p>';
+    
+    if (!currentUser) {
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">请先登录</p>';
+        return;
+    }
+    
+    try {
+        if (tab === 'favorites') {
+            // 获取收藏的帖子
+            const userFavorites = currentUser.favorites || [];
+            if (userFavorites.length === 0) {
+                container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">暂无收藏</p>';
+                return;
+            }
+            
+            const { data } = await supabase
+                .from('posts')
+                .select('*')
+                .in('id', userFavorites)
+                .order('created_at', { ascending: false });
+            
+            container.innerHTML = '';
+            data?.forEach(post => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding:15px;border-bottom:1px solid #e0e0e0;cursor:pointer;transition:background 0.3s ease;';
+                div.innerHTML = `
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                        <img src="${post.user_avatar}" style="width:25px;height:25px;border-radius:50%;">
+                        <span style="font-weight:600;color:#667eea;">${post.username}</span>
+                    </div>
+                    <div style="color:#333;margin-bottom:5px;">${escapeHtml(post.content || '').substring(0, 100)}${post.content?.length > 100 ? '...' : ''}</div>
+                    <div style="color:#999;font-size:0.8rem;">${new Date(post.created_at).toLocaleString('zh-CN')}</div>
+                `;
+                div.onclick = () => {
+                    closeFavoritesPage();
+                    const postEl = document.querySelector(`[data-id="${post.id}"]`);
+                    if (postEl) postEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                };
+                container.appendChild(div);
+            });
+            
+        } else if (tab === 'likes') {
+            // 获取点赞的帖子
+            const { data: likes } = await supabase
+                .from('likes')
+                .select('post_id')
+                .eq('user_id', currentUser.id);
+            
+            if (!likes || likes.length === 0) {
+                container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">暂无点赞</p>';
+                return;
+            }
+            
+            const postIds = likes.map(l => l.post_id);
+            const { data } = await supabase
+                .from('posts')
+                .select('*')
+                .in('id', postIds)
+                .order('created_at', { ascending: false });
+            
+            container.innerHTML = '';
+            data?.forEach(post => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding:15px;border-bottom:1px solid #e0e0e0;cursor:pointer;transition:background 0.3s ease;';
+                div.innerHTML = `
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                        <img src="${post.user_avatar}" style="width:25px;height:25px;border-radius:50%;">
+                        <span style="font-weight:600;color:#667eea;">${post.username}</span>
+                    </div>
+                    <div style="color:#333;margin-bottom:5px;">${escapeHtml(post.content || '').substring(0, 100)}${post.content?.length > 100 ? '...' : ''}</div>
+                    <div style="color:#999;font-size:0.8rem;">${new Date(post.created_at).toLocaleString('zh-CN')}</div>
+                `;
+                div.onclick = () => {
+                    closeFavoritesPage();
+                    const postEl = document.querySelector(`[data-id="${post.id}"]`);
+                    if (postEl) postEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                };
+                container.appendChild(div);
+            });
+        }
+        
+    } catch (error) {
+        console.error('加载失败:', error);
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">加载失败</p>';
+    }
+};
+
+// ==================== 增强消息通知 ====================
+window.showNotifications = function() {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    // 创建通知中心
+    const notifModal = document.createElement('div');
+    notifModal.className = 'modal';
+    notifModal.style.display = 'block';
+    notifModal.innerHTML = `
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>🔔 通知中心</h3>
+                <span class="close-btn" onclick="this.closest('.modal').remove()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="notification-list" style="max-height: 400px; overflow-y: auto;">
+                    <p style="text-align:center;color:#999;padding:40px;">加载中...</p>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(notifModal);
+    
+    // 加载通知
+    loadNotifications(notifModal.querySelector('#notification-list'));
+};
+
+async function loadNotifications(container) {
+    try {
+        // 获取点赞通知
+        const [likesRes, followsRes, commentsRes] = await Promise.all([
+            supabase.from('likes').select('post_id,created_at').neq('user_id', currentUser?.id || ''),
+            supabase.from('follows').select('follower_id,following_id,created_at').neq('follower_id', currentUser?.id || ''),
+            supabase.from('comments').select('post_id,user_id,content,created_at').neq('user_id', currentUser?.id || '')
+        ]);
+        
+        let notifications = [];
+        
+        // 处理点赞（自己帖子被点赞）
+        if (likesRes.data) {
+            const myPostIds = posts.filter(p => p.user_id === currentUser?.id).map(p => p.id);
+            likesRes.data.filter(l => myPostIds.includes(l.post_id)).forEach(l => {
+                notifications.push({ type: 'like', postId: l.post_id, time: l.created_at });
+            });
+        }
+        
+        // 处理关注（自己被关注）
+        if (followsRes.data) {
+            followsRes.data.filter(f => f.following_id === currentUser?.id).forEach(f => {
+                notifications.push({ type: 'follow', userId: f.follower_id, time: f.created_at });
+            });
+        }
+        
+        // 按时间排序
+        notifications.sort((a, b) => new Date(b.time) - new Date(a.time));
+        
+        container.innerHTML = '';
+        
+        if (notifications.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">暂无通知</p>';
+            return;
+        }
+        
+        // 显示通知（去重显示前20条）
+        notifications.slice(0, 20).forEach(n => {
+            const div = document.createElement('div');
+            div.style.cssText = 'padding:12px;border-bottom:1px solid #e0e0e0;cursor:pointer;transition:background 0.3s ease;';
+            
+            if (n.type === 'like') {
+                div.innerHTML = `
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span style="font-size:1.2rem;">❤️</span>
+                        <span>有人赞了你的帖子</span>
+                    </div>
+                    <div style="color:#999;font-size:0.8rem;margin-top:5px;">${new Date(n.time).toLocaleString('zh-CN')}</div>
+                `;
+            } else if (n.type === 'follow') {
+                div.innerHTML = `
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span style="font-size:1.2rem;">👤</span>
+                        <span>有人关注了你</span>
+                    </div>
+                    <div style="color:#999;font-size:0.8rem;margin-top:5px;">${new Date(n.time).toLocaleString('zh-CN')}</div>
+                `;
+            }
+            
+            div.onclick = () => {
+                notifModal.remove();
+                if (n.postId) {
+                    const postEl = document.querySelector(`[data-id="${n.postId}"]`);
+                    if (postEl) postEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            };
+            
+            container.appendChild(div);
+        });
+        
+    } catch (error) {
+        console.error('加载通知失败:', error);
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">加载失败</p>';
+    }
+}
