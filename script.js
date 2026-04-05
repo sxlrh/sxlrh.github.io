@@ -178,10 +178,18 @@ function generateId() {
 
 // ==================== 事件绑定 ====================
 function bindEvents() {
-    document.getElementById('post-button').addEventListener('click', handlePost);
-    document.getElementById('image-upload').addEventListener('change', handleImageUpload);
-    document.getElementById('video-upload').addEventListener('change', handleVideoUpload);
-    document.getElementById('voice-record').addEventListener('click', toggleVoiceRecord);
+    // 使用可选链避免元素不存在时出错
+    document.getElementById('post-button')?.addEventListener('click', handlePost);
+    document.getElementById('image-upload')?.addEventListener('change', handleImageUpload);
+    document.getElementById('video-upload')?.addEventListener('change', handleVideoUpload);
+    document.getElementById('voice-record')?.addEventListener('click', toggleVoiceRecord);
+    
+    // 确保用户区域按钮在页面加载后立即绑定
+    setTimeout(() => {
+        document.getElementById('friends-btn')?.addEventListener('click', showFriendsModal);
+        document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
+        document.getElementById('logout-btn')?.addEventListener('click', logout);
+    }, 100);
 }
 
 function bindAuthEvents() {
