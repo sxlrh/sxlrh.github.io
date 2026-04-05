@@ -1318,8 +1318,21 @@ createPostElement = function(post) {
     
     let commentsHtml = '';
     if (post.comments && post.comments.length > 0) {
-        commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
-        post.comments.slice(-5).forEach(c => {
+        // 按当前排序方式显示评论
+        const sortedComments = [...post.comments].sort((a, b) => {
+            if (commentSortType === 'hot') return (b.likes || 0) - (a.likes || 0);
+            return new Date(b.created_at) - new Date(a.created_at);
+        });
+        
+        commentsHtml = `<div class="post-comments">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <h4>评论 (${post.comments.length})</h4>
+                <button onclick="toggleCommentSort('${post.id}')" style="background:none;border:none;color:#667eea;cursor:pointer;font-size:0.85rem;">
+                    ${commentSortType === 'hot' ? '🔥 最热' : '🕐 最新'}
+                </button>
+            </div>
+            <ul class="comments-list">`;
+        sortedComments.slice(-5).forEach(c => {
             const commentLiked = currentUser && c.likedBy?.includes(currentUser.id);
             commentsHtml += `<li class="comment-item">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;cursor:pointer;" onclick="openUserProfile('${c.user_id}')">
@@ -1364,6 +1377,9 @@ createPostElement = function(post) {
                 </button>
                 <button class="action-btn favorite-btn ${isFavorited ? 'liked' : ''}" onclick="toggleFavorite('${post.id}')">
                     <i class="fas fa-bookmark"></i>
+                </button>
+                <button class="action-btn copy-btn" onclick="copyPostContent('${escapeHtml(post.content || '').replace(/'/g, "\\'")}')" title="复制内容">
+                    <i class="fas fa-copy"></i>
                 </button>
                 <button class="action-btn share-btn" onclick="sharePost('${post.id}')">
                     <i class="fas fa-share-alt"></i>
@@ -1811,6 +1827,7 @@ window.addEventListener('DOMContentLoaded', () => {
         setupLongPressSave();
         setupAnonymousToggle();
         setupFavoritesPage();
+        setupLikeAnimation();
     }, 1000);
 });
 
@@ -2112,6 +2129,89 @@ window.shareToWeibo = function(text, url) {
 window.shareToTwitter = function(text, url) {
     window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${text}`, '_blank');
 };
+
+// ==================== 复制帖子内容 ====================
+window.copyPostContent = function(content) {
+    navigator.clipboard.writeText(content).then(() => {
+        showToast('内容已复制', 'success');
+    }).catch(() => {
+        // 降级方案
+        const textarea = document.createElement('textarea');
+        textarea.value = content;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+        showToast('内容已复制', 'success');
+    });
+};
+
+// ==================== 评论排序 ====================
+let commentSortType = 'time'; // time 或 hot
+
+window.toggleCommentSort = function(postId) {
+    const post = posts.find(p => p.id === postId);
+    if (!post || !post.comments || post.comments.length === 0) return;
+    
+    if (commentSortType === 'time') {
+        commentSortType = 'hot';
+        showToast('按热度排序', 'info');
+    } else {
+        commentSortType = 'time';
+        showToast('按时间排序', 'info');
+    }
+    renderPosts();
+};
+
+// 修改加载评论的逻辑，按排序显示
+const originalLoadPosts = loadPosts;
+loadPosts = async function() {
+    await originalLoadPosts();
+    // 评论排序在 renderPosts 中处理
+};
+
+// 在 createPostElement 中应用排序
+const originalCreatePost = createPostElement;
+createPostElement = function(post) {
+    // 排序评论
+    if (post.comments && post.comments.length > 0) {
+        if (commentSortType === 'hot') {
+            post.comments = [...post.comments].sort((a, b) => (b.likes || 0) - (a.likes || 0));
+        } else {
+            post.comments = [...post.comments].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        }
+    }
+    return originalCreatePost(post);
+};
+
+// ==================== 优化点赞动画 ====================
+function setupLikeAnimation() {
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes likePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+        .like-btn.liked {
+            animation: likePulse 0.3s ease;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .post-item {
+            animation: fadeInUp 0.4s ease;
+        }
+        .action-btn {
+            transition: all 0.2s ease;
+        }
+        .action-btn:hover {
+            transform: scale(1.1);
+        }
+    `;
+    document.head.appendChild(style);
+}
 
 // ==================== 快捷键支持 ====================
 function setupKeyboardShortcuts() {
