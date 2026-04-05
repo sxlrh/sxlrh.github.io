@@ -1,41 +1,49 @@
 /* ========================================
-   心灵树洞 - 全面优化版样式表
-   包含：夜间模式、骨架屏、下拉刷新等
+   心灵树洞 - 界面优化版样式表
+   包含：圆角卡片、柔和阴影、动画优化等
    ======================================== */
 
 /* ==================== CSS 变量（主题系统） ==================== */
 :root {
-    /* 亮色主题 */
-    --bg-primary: #f8f9fa;
+    /* 亮色主题 - 更柔和的配色 */
+    --bg-primary: #fafbfc;
     --bg-secondary: #ffffff;
-    --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    --text-primary: #333333;
-    --text-secondary: #666666;
-    --text-muted: #999999;
-    --border-color: #e0e0e0;
-    --shadow-color: rgba(0, 0, 0, 0.1);
+    --bg-gradient: linear-gradient(180deg, #f8f9fc 0%, #eef1f5 100%);
+    --text-primary: #2d3748;
+    --text-secondary: #4a5568;
+    --text-muted: #a0aec0;
+    --border-color: #edf2f7;
+    --shadow-color: rgba(0, 0, 0, 0.06);
+    --shadow-hover: rgba(102, 126, 234, 0.15);
     --accent-color: #667eea;
     --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --danger-color: #ff6b6b;
-    --success-color: #28a745;
+    --danger-color: #fc8181;
+    --success-color: #68d391;
     
-    /* 夜间模式变量（默认同亮色） */
-    --bg-primary-dark: #1a1a2e;
-    --bg-secondary-dark: #16213e;
-    --text-primary-dark: #eaeaea;
-    --text-secondary-dark: #b8b8b8;
-    --border-color-dark: #2d2d44;
+    /* 夜间模式变量 */
+    --bg-primary-dark: #1a202c;
+    --bg-secondary-dark: #2d3748;
+    --text-primary-dark: #e2e8f0;
+    --text-secondary-dark: #a0aec0;
+    --border-color-dark: #4a5568;
     --shadow-color-dark: rgba(0, 0, 0, 0.3);
+    
+    /* 圆角变量 */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
 }
 
 /* 夜间模式 */
 [data-theme="dark"] {
     --bg-primary: var(--bg-primary-dark);
     --bg-secondary: var(--bg-secondary-dark);
-    --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    --bg-gradient: linear-gradient(180deg, #1a202c 0%, #2d3748 100%);
     --text-primary: var(--text-primary-dark);
     --text-secondary: var(--text-secondary-dark);
-    --text-muted: #888888;
+    --text-muted: #718096;
     --border-color: var(--border-color-dark);
     --shadow-color: var(--shadow-color-dark);
 }
@@ -164,26 +172,73 @@ body {
     width: 80%;
 }
 
-/* ==================== 头部样式 ==================== */
+/* ==================== 帖子卡片（优化圆角和阴影） ==================== */
+.post-item {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: 0 2px 8px var(--shadow-color), 0 1px 2px rgba(0,0,0,0.04);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.3s ease;
+    overflow: hidden;
+    border: 1px solid transparent;
+}
+
+.post-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 28px var(--shadow-hover), 0 4px 12px rgba(0,0,0,0.08);
+    border-color: rgba(102, 126, 234, 0.2);
+}
+
+/* ==================== 发布卡片（优化） ==================== */
+.post-card {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: 0 2px 12px var(--shadow-color);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.3s ease;
+    border: 1px solid var(--border-color);
+}
+
+.post-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px var(--shadow-hover);
+}
+
+/* ==================== 头部样式（优化） ==================== */
 header {
     background: var(--accent-gradient);
     color: white;
-    padding: 40px 0;
+    padding: 50px 0;
     text-align: center;
-    box-shadow: 0 4px 6px var(--shadow-color);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
     position: relative;
+    overflow: hidden;
+}
+
+header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    opacity: 0.5;
 }
 
 .logo {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 10px;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+    font-size: 2.8rem;
+    font-weight: 800;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    position: relative;
 }
 
 .slogan {
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     opacity: 0.9;
+    font-weight: 400;
 }
 
 /* 用户区域 */
@@ -388,19 +443,125 @@ main {
     cursor: not-allowed;
 }
 
-/* ==================== 帖子卡片 ==================== */
-.post-item {
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    padding: 25px;
-    box-shadow: 0 4px 15px var(--shadow-color);
-    transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
-    overflow: hidden;
+/* ==================== 按钮样式（更圆润） ==================== */
+.upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-weight: 500;
 }
 
-.post-item:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px var(--shadow-color);
+.upload-btn:hover {
+    background: var(--accent-gradient);
+    color: white;
+    border-color: transparent;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--shadow-hover);
+}
+
+.post-btn {
+    margin-left: auto;
+    padding: 12px 28px;
+    background: var(--accent-gradient);
+    color: white;
+    border: none;
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 14px rgba(102, 126, 234, 0.35);
+}
+
+.post-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.45);
+}
+
+.post-btn:active {
+    transform: translateY(0);
+}
+
+/* ==================== 输入框样式（更圆润） ==================== */
+#post-text {
+    width: 100%;
+    min-height: 120px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    resize: vertical;
+    font-family: inherit;
+    font-size: 1rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.3s ease;
+}
+
+#post-text:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.comment-input {
+    flex: 1;
+    padding: 10px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    font-size: 0.9rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.comment-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* ==================== 评论样式（优化） ==================== */
+.post-comments {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+.post-comments h4 {
+    color: var(--accent-color);
+    margin-bottom: 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.comments-list {
+    list-style: none;
+}
+
+.comment-item {
+    padding: 12px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+    border: 1px solid var(--border-color);
+    transition: background 0.2s ease;
+}
+
+.comment-item:hover {
+    background: #f7fafc;
+}
+
+[data-theme="dark"] .comment-item:hover {
+    background: #374151;
 }
 
 .post-item-content {
