@@ -581,16 +581,18 @@ function createPostElement(post) {
 
 async function incrementViewCount(postId) {
     try {
-        await supabase.rpc('increment_views', { post_id: postId });
-    } catch (error) {
-        // 如果 RPC 不存在，用普通更新
         const post = posts.find(p => p.id === postId);
         if (post) {
+            const newViews = (post.views || 0) + 1;
             await supabase
                 .from('posts')
-                .update({ views: (post.views || 0) + 1 })
+                .update({ views: newViews })
                 .eq('id', postId);
+            // 更新本地数据
+            post.views = newViews;
         }
+    } catch (error) {
+        console.error('浏览量更新失败:', error);
     }
 }
 
@@ -1327,9 +1329,14 @@ createPostElement = function(post) {
                 <span class="comment-text">${parseContent(c.content)}</span>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;">
                     <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
-                    <button class="action-btn ${commentLiked ? 'liked' : ''}" onclick="toggleCommentLike('${post.id}', '${c.id}')" style="font-size:0.75rem;padding:2px 8px;">
-                        <i class="fas fa-heart"></i> ${c.likes || 0}
-                    </button>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button class="action-btn" onclick="showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="font-size:0.75rem;padding:2px 8px;">
+                            <i class="fas fa-reply"></i> 回复
+                        </button>
+                        <button class="action-btn ${commentLiked ? 'liked' : ''}" onclick="toggleCommentLike('${post.id}', '${c.id}')" style="font-size:0.75rem;padding:2px 8px;">
+                            <i class="fas fa-heart"></i> ${c.likes || 0}
+                        </button>
+                    </div>
                 </div>
             </li>`;
         });
@@ -3100,4 +3107,157 @@ window.showFollowingList = async function(userId) {
         console.error('加载关注失败:', error);
         modal.querySelector('#following-list').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
     }
+};
+
+// ==================== 评论回复功能 ====================
+window.showReplyInput = function(postId, commentId, replyToUsername) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    // 创建回复输入框
+    const replyInput = document.createElement('div');
+    replyInput.className = 'reply-input-container';
+    replyInput.style.cssText = 'display:flex;gap:10px;margin-top:10px;padding:10px;background:#f8f9fa;border-radius:8px;';
+    replyInput.innerHTML = `
+        <input type="text" class="reply-input" placeholder="回复 @${replyToUsername}..." 
+               style="flex:1;padding:8px 12px;border:1px solid #e0e0e0;border-radius:20px;font-size:0.85rem;">
+        <button class="reply-submit-btn" style="padding:8px 15px;background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;border:none;border-radius:20px;cursor:pointer;font-size:0.85rem;">
+            发送
+        </button>
+    `;
+    
+    // 找到对应的评论元素并添加回复框
+    const commentItems = document.querySelectorAll(`.comment-item`);
+    commentItems.forEach(item => {
+        const likeBtn = item.querySelector('button[onclick*="toggleCommentLike"]');
+        if (likeBtn && likeBtn.getAttribute('onclick').includes(commentId)) {
+            // 检查是否已有回复框
+            const existingReply = item.querySelector('.reply-input-container');
+            if (existingReply) {
+                existingReply.remove();
+            } else {
+                item.appendChild(replyInput);
+                
+                // 绑定发送事件
+                const input = replyInput.querySelector('.reply-input');
+                const submitBtn = replyInput.querySelector('.reply-submit-btn');
+                
+                submitBtn.onclick = () => replyComment(postId, commentId, input.value);
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') replyComment(postId, commentId, input.value);
+                });
+                
+                input.focus();
+            }
+        }
+    });
+};
+
+window.replyComment = async function(postId, commentId, content) {
+    if (!content.trim()) {
+        showToast('请输入回复内容', 'error');
+        return;
+    }
+    
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    try {
+        const { data: post } = await supabase
+            .from('posts')
+            .select('comments')
+            .eq('id', postId)
+            .single();
+        
+        if (!post || !post.comments) {
+            showToast('评论不存在', 'error');
+            return;
+        }
+        
+        // 找到原评论
+        const comment = post.comments.find(c => c.id === commentId);
+        if (!comment) {
+            showToast('评论不存在', 'error');
+            return;
+        }
+        
+        // 初始化 replies 数组
+        if (!comment.replies) {
+            comment.replies = [];
+        }
+        
+        // 添加回复
+        comment.replies.push({
+            id: generateId(),
+            user_id: currentUser.id,
+            username: currentUser.username,
+            user_avatar: currentUser.avatar,
+            content: content.trim(),
+            created_at: new Date().toISOString()
+        });
+        
+        // 保存到数据库
+        await supabase
+            .from('posts')
+            .update({ comments: post.comments })
+            .eq('id', postId);
+        
+        // 刷新帖子
+        await loadPosts();
+        showToast('回复成功', 'success');
+        
+    } catch (error) {
+        console.error('回复失败:', error);
+        showToast('回复失败', 'error');
+    }
+};
+
+// 修改 createPostElement 以显示回复
+const originalCreatePostElement2 = createPostElement;
+createPostElement = function(post) {
+    const result = originalCreatePostElement2(post);
+    
+    // 添加回复显示逻辑
+    setTimeout(() => {
+        if (post.comments) {
+            post.comments.forEach(c => {
+                if (c.replies && c.replies.length > 0) {
+                    const commentItems = document.querySelectorAll(`.comment-item`);
+                    commentItems.forEach(item => {
+                        const likeBtn = item.querySelector('button[onclick*="toggleCommentLike"]');
+                        if (likeBtn && likeBtn.getAttribute('onclick').includes(c.id)) {
+                            // 检查是否已显示回复
+                            const existingReplies = item.querySelector('.comment-replies');
+                            if (!existingReplies) {
+                                let repliesHtml = `<div class="comment-replies" style="margin-top:10px;padding-left:20px;border-left:2px solid #e0e0e0;">`;
+                                c.replies.forEach(r => {
+                                    repliesHtml += `
+                                        <div style="margin-bottom:8px;padding:8px;background:#fff;border-radius:8px;">
+                                            <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+                                                <img src="${r.user_avatar}" style="width:18px;height:18px;border-radius:50%;">
+                                                <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${r.username}</span>
+                                                <span style="font-size:0.75rem;color:#999;">回复</span>
+                                                <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
+                                            </div>
+                                            <div style="font-size:0.85rem;color:#333;">${escapeHtml(r.content)}</div>
+                                        </div>
+                                    `;
+                                });
+                                repliesHtml += '</div>';
+                                item.insertAdjacentHTML('beforeend', repliesHtml);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    }, 100);
+    
+    return result;
 };
