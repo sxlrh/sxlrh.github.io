@@ -34,28 +34,10 @@
             border-radius: 50%;
             opacity: 0.1;
         }
-        .circle1 {
-            width: 400px;
-            height: 400px;
-            background: #667eea;
-            top: -100px;
-            right: -100px;
-        }
-        .circle2 {
-            width: 300px;
-            height: 300px;
-            background: #764ba2;
-            bottom: -50px;
-            left: -50px;
-        }
-        .circle3 {
-            width: 200px;
-            height: 200px;
-            background: #f093fb;
-            top: 40%;
-            left: -80px;
-            opacity: 0.05;
-        }
+        .circle1 { width: 400px; height: 400px; background: #667eea; top: -100px; right: -100px; }
+        .circle2 { width: 300px; height: 300px; background: #764ba2; bottom: -50px; left: -50px; }
+        .circle3 { width: 200px; height: 200px; background: #f093fb; top: 40%; left: -80px; opacity: 0.05; }
+        
         /* 主内容区 */
         .content {
             position: relative;
@@ -67,6 +49,7 @@
             flex-direction: column;
             justify-content: center;
         }
+        
         /* Logo */
         .logo {
             font-size: 4rem;
@@ -78,21 +61,27 @@
         .logo-icon {
             font-size: 5rem;
             margin-bottom: 20px;
+            animation: float 3s ease-in-out infinite;
         }
-        /* 副标题 */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
         .subtitle {
             color: rgba(255,255,255,0.7);
             font-size: 1.5rem;
             margin-bottom: 40px;
             letter-spacing: 2px;
         }
-        /* 分割线 */
+        
         .divider {
             width: 100px;
             height: 3px;
             background: linear-gradient(90deg, transparent, #667eea, transparent);
             margin: 30px auto;
         }
+        
         /* 特点列表 */
         .features {
             margin: 40px 0;
@@ -116,7 +105,8 @@
             justify-content: center;
             font-size: 1.5rem;
         }
-        /* 按钮区域 */
+        
+        /* 扫码区域 */
         .cta {
             margin-top: 50px;
         }
@@ -126,26 +116,68 @@
             margin-bottom: 20px;
         }
         .qr-section {
-            background: rgba(255,255,255,0.1);
+            background: linear-gradient(135deg, rgba(102,126,234,0.3) 0%, rgba(118,75,162,0.3) 100%);
             border-radius: 20px;
             padding: 30px;
             display: inline-block;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        .qr-placeholder {
-            width: 150px;
-            height: 150px;
+        .qr-box {
+            width: 180px;
+            height: 180px;
             background: white;
             border-radius: 15px;
+            margin: 0 auto 15px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 15px;
-            font-size: 4rem;
+            position: relative;
+            overflow: hidden;
         }
+        /* 模拟二维码图案 */
+        .qr-pattern {
+            width: 140px;
+            height: 140px;
+            position: relative;
+        }
+        .qr-block {
+            position: absolute;
+            background: #1a1a2e;
+        }
+        /* 定位角 */
+        .qr-corner {
+            width: 30px;
+            height: 30px;
+            border: 6px solid #1a1a2e;
+            position: absolute;
+        }
+        .qr-corner-tl { top: 0; left: 0; border-right: none; border-bottom: none; }
+        .qr-corner-tr { top: 0; right: 0; border-left: none; border-bottom: none; }
+        .qr-corner-bl { bottom: 0; left: 0; border-right: none; border-top: none; }
+        .qr-corner-br { bottom: 0; right: 0; border-left: none; border-top: none; }
+        /* 中心logo */
+        .qr-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            background: #667eea;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
         .qr-text {
-            color: rgba(255,255,255,0.7);
-            font-size: 0.9rem;
+            color: rgba(255,255,255,0.9);
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 1px;
         }
+        
         /* 底部信息 */
         .footer {
             position: absolute;
@@ -156,6 +188,7 @@
             color: rgba(255,255,255,0.5);
             font-size: 0.9rem;
         }
+        
         /* 装饰星星 */
         .stars {
             position: absolute;
@@ -181,12 +214,10 @@
 </head>
 <body>
     <div class="poster">
-        <!-- 装饰圆圈 -->
         <div class="circle circle1"></div>
         <div class="circle circle2"></div>
         <div class="circle circle3"></div>
         
-        <!-- 星星装饰 -->
         <div class="stars">
             <div class="star" style="top: 10%; left: 20%; animation-delay: 0s;"></div>
             <div class="star" style="top: 25%; left: 80%; animation-delay: 0.5s;"></div>
@@ -198,14 +229,12 @@
         </div>
         
         <div class="content">
-            <!-- Logo -->
             <div class="logo-icon">🌳</div>
             <h1 class="logo">心灵树洞</h1>
             <p class="subtitle">在这里，你可以倾诉一切</p>
             
             <div class="divider"></div>
             
-            <!-- 特点 -->
             <div class="features">
                 <div class="feature">
                     <div class="feature-icon">💬</div>
@@ -227,17 +256,23 @@
             
             <div class="divider"></div>
             
-            <!-- 扫码区域 -->
             <div class="cta">
-                <p class="cta-text">扫码访问我们的网站</p>
+                <p class="cta-text">扫码访问</p>
                 <div class="qr-section">
-                    <div class="qr-placeholder">🌳</div>
-                    <p class="qr-text">https://sxlrh.github.io</p>
+                    <div class="qr-box">
+                        <div class="qr-pattern">
+                            <div class="qr-corner qr-corner-tl"></div>
+                            <div class="qr-corner qr-corner-tr"></div>
+                            <div class="qr-corner qr-corner-bl"></div>
+                            <div class="qr-corner qr-corner-br"></div>
+                            <div class="qr-center">🌳</div>
+                        </div>
+                    </div>
+                    <p class="qr-text">sxlrh.github.io</p>
                 </div>
             </div>
         </div>
         
-        <!-- 底部 -->
         <div class="footer">
             <p>© 2026 心灵树洞 | 让每一次倾诉都被温柔以待</p>
         </div>
