@@ -240,6 +240,7 @@ async function login() {
 
 async function register() {
     const username = document.getElementById('register-username').value.trim();
+    const email = document.getElementById('register-email')?.value.trim() || '';
     const password = document.getElementById('register-password').value.trim();
     const confirmPassword = document.getElementById('register-confirm-password').value.trim();
     
@@ -274,7 +275,8 @@ async function register() {
             .insert({
                 id: userId,
                 username: username,
-                avatar: avatar
+                avatar: avatar,
+                email: email
             });
         
         if (error) {
@@ -286,7 +288,7 @@ async function register() {
             return;
         }
         
-        // 存储密码到本地（简化方案，实际应该用后端加密）
+        // 存储密码到本地
         localStorage.setItem(`pwd_${userId}`, password);
         
         currentUser = { id: userId, username, avatar };
@@ -294,7 +296,7 @@ async function register() {
         
         updateUserInfo();
         hideAuthModal();
-        showToast('注册成功！', 'success');
+        showToast('注册成功！您的用户ID: ' + userId, 'success');
         
     } catch (error) {
         console.error('注册失败:', error);
@@ -3631,3 +3633,234 @@ async function loadNotifications(container) {
         container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;">加载失败</p>';
     }
 }
+
+// ==================== 找回密码功能 ====================
+let forgotUserId = null;
+
+window.showForgotPassword = function(e) {
+    e.preventDefault();
+    document.getElementById('auth-modal').style.display = 'none';
+    document.getElementById('forgot-password-modal').style.display = 'block';
+    // 重置表单
+    document.getElementById('forgot-step1').style.display = 'block';
+    document.getElementById('forgot-step2').style.display = 'none';
+    document.getElementById('forgot-success').style.display = 'none';
+    document.getElementById('forgot-username').value = '';
+    document.getElementById('forgot-new-password').value = '';
+    document.getElementById('forgot-confirm-password').value = '';
+};
+
+window.closeForgotPasswordModal = function() {
+    document.getElementById('forgot-password-modal').style.display = 'none';
+};
+
+window.forgotPasswordStep1 = async function() {
+    const username = document.getElementById('forgot-username').value.trim();
+    if (!username) {
+        showToast('请输入用户名', 'error');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        // 查找用户
+        const { data: user } = await supabase
+            .from('users')
+            .select('id, username')
+            .eq('username', username)
+            .single();
+        
+        if (!user) {
+            showToast('用户名不存在', 'error');
+            showLoading(false);
+            return;
+        }
+        
+        // 检查本地是否有密码记录
+        const storedPassword = localStorage.getItem(`pwd_${user.id}`);
+        if (!storedPassword) {
+            showToast('该账号未设置过密码（可能是第三方登录）', 'error');
+            showLoading(false);
+            return;
+        }
+        
+        forgotUserId = user.id;
+        document.getElementById('forgot-step1').style.display = 'none';
+        document.getElementById('forgot-step2').style.display = 'block';
+        showToast('请输入新密码', 'success');
+        
+    } catch (error) {
+        console.error('查找用户失败:', error);
+        showToast('查找失败，请重试', 'error');
+    } finally {
+        showLoading(false);
+    }
+};
+
+window.resetPassword = async function() {
+    const newPassword = document.getElementById('forgot-new-password').value.trim();
+    const confirmPassword = document.getElementById('forgot-confirm-password').value.trim();
+    
+    if (!newPassword || !confirmPassword) {
+        showToast('请填写所有字段', 'error');
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        showToast('两次密码不一致', 'error');
+        return;
+    }
+    
+    if (newPassword.length < 6) {
+        showToast('密码至少6位', 'error');
+        return;
+    }
+    
+    if (!forgotUserId) {
+        showToast('请先验证用户名', 'error');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        // 更新本地密码存储
+        localStorage.setItem(`pwd_${forgotUserId}`, newPassword);
+        
+        document.getElementById('forgot-step2').style.display = 'none';
+        document.getElementById('forgot-success').style.display = 'block';
+        showToast('密码重置成功！', 'success');
+        
+    } catch (error) {
+        console.error('重置密码失败:', error);
+        showToast('重置失败，请重试', 'error');
+    } finally {
+        showLoading(false);
+    }
+};
+
+// 登录时也需要检查本地密码
+const originalLogin = login;
+login = async function() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+    
+    if (!username || !password) {
+        showToast('请输入用户名和密码', 'error');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        // 查找用户
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('username', username)
+            .single();
+        
+        if (error || !user) {
+            showToast('用户名不存在', 'error');
+            return;
+        }
+        
+        // 检查本地密码
+        const storedPassword = localStorage.getItem(`pwd_${user.id}`);
+        
+        if (!storedPassword) {
+            // 用户可能是第三方登录，没有设置过密码
+            // 提示用户
+            if (user.username.startsWith('微信用户') || user.username.startsWith('QQ用户')) {
+                showToast('该账号为第三方登录账号，无法使用密码登录', 'error');
+            } else {
+                showToast('该账号未设置过密码，请先注册', 'error');
+            }
+            showLoading(false);
+            return;
+        }
+        
+        if (storedPassword !== password) {
+            showToast('密码错误', 'error');
+            showLoading(false);
+            return;
+        }
+        
+        // 登录成功
+        currentUser = user;
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('登录成功', 'success');
+        loadPosts();
+        
+    } catch (error) {
+        console.error('登录失败:', error);
+        showToast('登录失败，请重试', 'error');
+    } finally {
+        showLoading(false);
+    }
+};
+
+// 第三方登录（微信/QQ）检查本地密码是否存在
+const originalLoginWithWechat = window.loginWithWechat;
+window.loginWithWechat = async function() {
+    const username = '微信用户' + Math.floor(Math.random() * 100000);
+    showLoading(true);
+    try {
+        const userId = generateId();
+        const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=07C160&color=fff&size=128`;
+        
+        const { error } = await supabase
+            .from('users')
+            .insert({ id: userId, username, avatar });
+        
+        if (error) {
+            showToast('登录失败，请重试', 'error');
+            return;
+        }
+        
+        // 第三方登录不需要本地密码
+        currentUser = { id: userId, username, avatar };
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('登录成功', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast('登录失败', 'error');
+    } finally {
+        showLoading(false);
+    }
+};
+
+const originalLoginWithQQ = window.loginWithQQ;
+window.loginWithQQ = async function() {
+    const username = 'QQ用户' + Math.floor(Math.random() * 100000);
+    showLoading(true);
+    try {
+        const userId = generateId();
+        const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=12B7F5&color=fff&size=128`;
+        
+        const { error } = await supabase
+            .from('users')
+            .insert({ id: userId, username, avatar });
+        
+        if (error) {
+            showToast('登录失败，请重试', 'error');
+            return;
+        }
+        
+        currentUser = { id: userId, username, avatar };
+        saveUser();
+        updateUserInfo();
+        hideAuthModal();
+        showToast('登录成功', 'success');
+    } catch (error) {
+        console.error(error);
+        showToast('登录失败', 'error');
+    } finally {
+        showLoading(false);
+    }
+};
