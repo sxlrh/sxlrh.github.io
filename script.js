@@ -1271,7 +1271,7 @@ createPostElement = function(post) {
         media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice_url}"></audio></div>`;
     }
     
-    const userHtml = `<div class="post-user" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    const userHtml = `<div class="post-user" onclick="openUserProfile('${post.user_id}')" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;">
         <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
         <span style="font-weight:600;color:#667eea;">${post.username}</span>
     </div>`;
@@ -1280,7 +1280,7 @@ createPostElement = function(post) {
     if (post.comments && post.comments.length > 0) {
         commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
         post.comments.slice(-5).forEach(c => {
-            commentsHtml += `<li class="comment-item">
+            commentsHtml += `<li class="comment-item" onclick="openUserProfile('${c.user_id}')">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
@@ -1415,6 +1415,139 @@ window.replyComment = async function(postId, commentId, content) {
     } catch (error) {
         console.error('回复失败:', error);
         showToast('回复失败', 'error');
+    }
+};
+
+// ==================== 用户主页功能 ====================
+window.openUserProfile = async function(userId) {
+    const modal = document.getElementById('user-profile-modal');
+    if (!modal) return;
+    
+    modal.style.display = 'block';
+    document.getElementById('profile-posts').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载中...</p>';
+    
+    try {
+        const { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
+        if (!user) {
+            document.getElementById('profile-posts').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">用户不存在</p>';
+            return;
+        }
+        
+        document.getElementById('profile-username').textContent = user.username + ' 的主页';
+        document.getElementById('profile-avatar').src = user.avatar;
+        document.getElementById('profile-name').textContent = user.username;
+        document.getElementById('profile-id').textContent = 'ID: ' + user.id;
+        
+        const [followersRes, followingRes] = await Promise.all([
+            supabase.from('follows').select('id', { count: 'exact' }).eq('following_id', userId),
+            supabase.from('follows').select('id', { count: 'exact' }).eq('follower_id', userId)
+        ]);
+        
+        document.getElementById('profile-followers-count').textContent = followersRes.count || 0;
+        document.getElementById('profile-following-count').textContent = followingRes.count || 0;
+        
+        const { count: postsCount } = await supabase.from('posts').select('*', { count: 'exact' }).eq('user_id', userId);
+        document.getElementById('profile-posts-count').textContent = postsCount || 0;
+        
+        const actionsDiv = document.getElementById('profile-actions');
+        if (currentUser && currentUser.id !== userId) {
+            const { data: existingFollow } = await supabase
+                .from('follows')
+                .select('id')
+                .eq('follower_id', currentUser.id)
+                .eq('following_id', userId)
+                .single();
+            
+            const isFollowing = !!existingFollow;
+            actionsDiv.innerHTML = `
+                <button onclick="toggleFollowUser('${userId}')" 
+                        style="padding:8px 24px;background:${isFollowing ? '#999' : '#667eea'};color:white;border:none;border-radius:20px;cursor:pointer;font-size:0.9rem;">
+                    ${isFollowing ? '已关注' : '+ 关注'}
+                </button>
+            `;
+        } else {
+            actionsDiv.innerHTML = '';
+        }
+        
+        const { data: userPosts } = await supabase
+            .from('posts')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(20);
+        
+        const postsDiv = document.getElementById('profile-posts');
+        postsDiv.innerHTML = '';
+        
+        if (!userPosts || userPosts.length === 0) {
+            postsDiv.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无帖子</p>';
+            return;
+        }
+        
+        userPosts.forEach(post => {
+            const div = document.createElement('div');
+            div.style.cssText = 'padding:12px;border-bottom:1px solid #e0e0e0;cursor:pointer;';
+            div.innerHTML = `
+                <div style="color:#333;margin-bottom:5px;">${escapeHtml(post.content || '').substring(0, 80)}${post.content?.length > 80 ? '...' : ''}</div>
+                <div style="color:#999;font-size:0.8rem;">${new Date(post.created_at).toLocaleString('zh-CN')} · ${post.views || 0} 浏览 · ${post.likes || 0} 赞</div>
+            `;
+            div.onclick = () => {
+                modal.style.display = 'none';
+                const postEl = document.querySelector('[data-id="' + post.id + '"]');
+                if (postEl) postEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            };
+            postsDiv.appendChild(div);
+        });
+        
+    } catch (error) {
+        console.error('加载用户主页失败:', error);
+        document.getElementById('profile-posts').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
+    }
+};
+
+window.closeUserProfile = function() {
+    const modal = document.getElementById('user-profile-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+// 点击模态框外部关闭
+document.addEventListener('click', function(e) {
+    const profileModal = document.getElementById('user-profile-modal');
+    if (profileModal && e.target === profileModal) {
+        profileModal.style.display = 'none';
+    }
+});
+
+window.toggleFollowUser = async function(userId) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        return;
+    }
+    
+    try {
+        const { data: existing } = await supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', currentUser.id)
+            .eq('following_id', userId)
+            .single();
+        
+        if (existing) {
+            await supabase.from('follows').delete().eq('id', existing.id);
+            showToast('已取消关注', 'success');
+        } else {
+            await supabase.from('follows').insert({
+                follower_id: currentUser.id,
+                following_id: userId
+            });
+            showToast('关注成功', 'success');
+        }
+        
+        openUserProfile(userId);
+        
+    } catch (error) {
+        console.error('关注操作失败:', error);
+        showToast('操作失败', 'error');
     }
 };
 
