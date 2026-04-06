@@ -504,6 +504,14 @@ main {
     color: #ff5252;
 }
 
+.action-btn.favorited {
+    color: #ffc107;
+}
+
+.action-btn.favorited:hover {
+    color: #ff9800;
+}
+
 /* ==================== 评论样式 ==================== */
 .post-comments {
     margin-top: 20px;

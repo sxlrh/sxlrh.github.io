@@ -441,20 +441,25 @@ async function loadPosts() {
             
             // 检查当前用户是否点赞
             let liked = false;
+            let favorited = false;
             if (currentUser) {
-                const { data: likeData } = await supabase
-                    .from('likes')
-                    .select('id')
-                    .eq('post_id', post.id)
-                    .eq('user_id', currentUser.id)
-                    .single();
-                liked = !!likeData;
+                const [likeData, favData] = await Promise.all([
+                    supabase.from('likes').select('id').eq('post_id', post.id).eq('user_id', currentUser.id).single(),
+                    supabase.from('favorites').select('id').eq('post_id', post.id).eq('user_id', currentUser.id).single()
+                ]);
+                liked = !!likeData.data;
+                favorited = !!favData.data;
             }
+            
+            // 获取收藏数
+            const { count: favCount } = await supabase.from('favorites').select('id', { count: 'exact' }).eq('post_id', post.id);
             
             return {
                 ...post,
                 likes: likesRes.count || 0,
                 liked,
+                favorited,
+                favorites: favCount || 0,
                 comments: commentsRes.data || []
             };
         }));
@@ -533,6 +538,9 @@ function createPostElement(post) {
                 <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" data-id="${post.id}">
                     <i class="fas fa-heart"></i> ${post.likes}
                 </button>
+                <button class="action-btn favorite-btn ${post.favorited ? 'favorited' : ''}" data-id="${post.id}" title="收藏">
+                    <i class="fas fa-bookmark"></i> ${post.favorites || 0}
+                </button>
                 <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
             </div>
         </div>
@@ -543,6 +551,7 @@ function createPostElement(post) {
         </div>`;
     
     div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
+    div.querySelector('.favorite-btn')?.addEventListener('click', () => toggleFavorite(post.id));
     div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
     div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
     
@@ -746,6 +755,49 @@ async function toggleLike(postId) {
         
     } catch (error) {
         console.error('点赞失败:', error);
+        showToast('操作失败', 'error');
+    }
+}
+
+// ==================== 收藏功能 ====================
+async function toggleFavorite(postId) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    try {
+        const post = posts.find(p => p.id === postId);
+        if (!post) return;
+        
+        if (post.favorited) {
+            // 取消收藏
+            await supabase
+                .from('favorites')
+                .delete()
+                .eq('post_id', postId)
+                .eq('user_id', currentUser.id);
+            post.favorited = false;
+            post.favorites = Math.max(0, post.favorites - 1);
+            showToast('已取消收藏', 'success');
+        } else {
+            // 添加收藏
+            await supabase
+                .from('favorites')
+                .insert({
+                    post_id: postId,
+                    user_id: currentUser.id
+                });
+            post.favorited = true;
+            post.favorites = (post.favorites || 0) + 1;
+            showToast('收藏成功', 'success');
+        }
+        
+        renderPosts();
+        
+    } catch (error) {
+        console.error('收藏失败:', error);
         showToast('操作失败', 'error');
     }
 }
@@ -1305,6 +1357,9 @@ createPostElement = function(post) {
                 <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" data-id="${post.id}">
                     <i class="fas fa-heart"></i> ${post.likes}
                 </button>
+                <button class="action-btn favorite-btn ${post.favorited ? 'favorited' : ''}" data-id="${post.id}" title="收藏">
+                    <i class="fas fa-bookmark"></i> ${post.favorites || 0}
+                </button>
                 <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
             </div>
         </div>
@@ -1315,6 +1370,7 @@ createPostElement = function(post) {
         </div>`;
     
     div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
+    div.querySelector('.favorite-btn')?.addEventListener('click', () => toggleFavorite(post.id));
     div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
     div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
     
@@ -1423,6 +1479,7 @@ window.openUserProfile = async function(userId) {
     const modal = document.getElementById('user-profile-modal');
     if (!modal) return;
     
+    window._currentProfileUserId = userId;
     modal.style.display = 'block';
     document.getElementById('profile-posts').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载中...</p>';
     
@@ -1509,6 +1566,59 @@ window.closeUserProfile = function() {
     const modal = document.getElementById('user-profile-modal');
     if (modal) modal.style.display = 'none';
 };
+
+// 显示用户主页的标签页
+window.showProfileTab = function(tab) {
+    document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    if (tab === 'posts') {
+        document.getElementById('profile-posts').style.display = 'block';
+        document.getElementById('profile-favorites').style.display = 'none';
+    } else if (tab === 'favorites') {
+        const userId = window._currentProfileUserId;
+        if (userId) loadUserFavorites(userId);
+    }
+};
+
+// 加载用户收藏
+async function loadUserFavorites(userId) {
+    const container = document.getElementById('profile-favorites');
+    container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载中...</p>';
+    
+    try {
+        const { data: favorites } = await supabase
+            .from('favorites')
+            .select('post_id, posts(*)')
+            .eq('user_id', userId);
+        
+        if (!favorites || favorites.length === 0) {
+            container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无收藏</p>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        favorites.forEach(fav => {
+            if (fav.posts) {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding:12px;border-bottom:1px solid #e0e0e0;cursor:pointer;';
+                div.innerHTML = `
+                    <div style="color:#333;margin-bottom:5px;">${escapeHtml(fav.posts.content || '').substring(0, 80)}${fav.posts.content?.length > 80 ? '...' : ''}</div>
+                    <div style="color:#999;font-size:0.8rem;">${new Date(fav.posts.created_at).toLocaleString('zh-CN')} · ${fav.posts.views || 0} 浏览</div>
+                `;
+                div.onclick = () => {
+                    document.getElementById('user-profile-modal').style.display = 'none';
+                    const postEl = document.querySelector('[data-id="' + fav.posts.id + '"]');
+                    if (postEl) postEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                };
+                container.appendChild(div);
+            }
+        });
+    } catch (error) {
+        console.error('加载收藏失败:', error);
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
+    }
+}
 
 // 点击模态框外部关闭
 document.addEventListener('click', function(e) {
