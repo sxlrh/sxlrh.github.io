@@ -356,8 +356,8 @@ function showSettingsModal() {
 function handleAvatarUpload(e) {
     const file = e.target.files[0];
     if (file) {
-        if (file.size > 2 * 1024 * 1024) {
-            showToast('图片不能超过2MB', 'error');
+        if (file.size > 50 * 1024 * 1024) {
+            showToast('图片不能超过50MB', 'error');
             return;
         }
         const reader = new FileReader();
@@ -595,8 +595,8 @@ async function incrementViewCount(postId) {
 async function handleImageUpload(e) {
     const file = e.target.files[0];
     if (file) {
-        if (file.size > 5 * 1024 * 1024) {
-            showToast('图片不能超过5MB', 'error');
+        if (file.size > 50 * 1024 * 1024) {
+            showToast('图片不能超过50MB', 'error');
             return;
         }
         currentImage = file;
@@ -609,8 +609,8 @@ async function handleImageUpload(e) {
 async function handleVideoUpload(e) {
     const file = e.target.files[0];
     if (file) {
-        if (file.size > 20 * 1024 * 1024) {
-            showToast('视频不能超过20MB', 'error');
+        if (file.size > 50 * 1024 * 1024) {
+            showToast('视频不能超过50MB', 'error');
             return;
         }
         currentVideo = file;
