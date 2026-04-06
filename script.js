@@ -48,29 +48,56 @@ async function init() {
     showLoading(true);
     
     try {
+        // 并行执行用户验证和帖子加载
+        const initPromises = [];
+        
         // 检查本地存储的用户
         const savedUser = localStorage.getItem('treeholeUser');
         if (savedUser) {
-            currentUser = JSON.parse(savedUser);
-            // 验证用户是否还存在
-            const { data } = await supabase.from('users').select('*').eq('id', currentUser.id).single();
-            if (!data) {
+            try {
+                currentUser = JSON.parse(savedUser);
+                // 验证用户（带超时）
+                const userPromise = supabase.from('users').select('*').eq('id', currentUser.id).single();
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('用户验证超时')), 5000));
+                
+                const { data } = await Promise.race([userPromise, timeoutPromise]).catch(() => ({ data: null }));
+                if (!data) {
+                    currentUser = null;
+                    localStorage.removeItem('treeholeUser');
+                } else {
+                    currentUser = data;
+                }
+            } catch (e) {
                 currentUser = null;
-                localStorage.removeItem('treeholeUser');
-            } else {
-                currentUser = data;
             }
         }
         
         updateUserInfo();
         loadViewedPosts();
+        
+        // 加载帖子（已在loadPosts中添加超时保护）
         await loadPosts();
+        
         bindEvents();
         bindAuthEvents();
-        setupRealtimeSubscription();
         
-        // 初始化排行榜
-        setTimeout(() => showRanking('likes'), 500);
+        // 延迟初始化实时订阅（不影响首屏速度）
+        setTimeout(() => {
+            try {
+                setupRealtimeSubscription();
+            } catch (e) {
+                console.error('实时订阅初始化失败:', e);
+            }
+        }, 2000);
+        
+        // 延迟初始化排行榜
+        setTimeout(() => {
+            try {
+                showRanking('likes');
+            } catch (e) {
+                console.error('排行榜初始化失败:', e);
+            }
+        }, 1500);
         
     } catch (error) {
         console.error('初始化失败:', error);
@@ -186,12 +213,18 @@ async function login() {
     showLoading(true);
     
     try {
-        // 简单密码验证（实际项目应该用 Supabase Auth）
-        const { data, error } = await supabase
+        // 设置超时
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('登录超时')), 8000)
+        );
+        
+        const loginPromise = supabase
             .from('users')
             .select('*')
             .eq('username', username)
             .single();
+        
+        const { data, error } = await Promise.race([loginPromise, timeoutPromise]);
         
         if (error || !data) {
             showToast('用户名不存在', 'error');
@@ -249,7 +282,12 @@ async function register() {
         const userId = generateId();
         const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff&size=128`;
         
-        const { error } = await supabase
+        // 设置超时
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('注册超时')), 8000)
+        );
+        
+        const insertPromise = supabase
             .from('users')
             .insert({
                 id: userId,
@@ -257,6 +295,8 @@ async function register() {
                 avatar: avatar,
                 password: simpleHash(password)
             });
+        
+        const { error } = await Promise.race([insertPromise, timeoutPromise]);
         
         if (error) {
             if (error.code === '23505') {
@@ -433,43 +473,69 @@ async function saveSettings() {
 // ==================== 帖子 ====================
 async function loadPosts() {
     try {
-        const { data, error } = await supabase
+        // 设置超时保护
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('请求超时')), 10000)
+        );
+        
+        const postsPromise = supabase
             .from('posts')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(50);
+            .limit(30); // 减少加载数量
         
-        if (error) throw error;
+        const data = await Promise.race([postsPromise.then(r => r.data), timeoutPromise]);
         
-        // 获取每条帖子的点赞数和评论数
-        posts = await Promise.all(data.map(async (post) => {
-            const [likesRes, commentsRes] = await Promise.all([
-                supabase.from('likes').select('id', { count: 'exact' }).eq('post_id', post.id),
-                supabase.from('comments').select('*').eq('post_id', post.id)
-            ]);
-            
-            // 检查当前用户是否点赞
-            let liked = false;
-            let favorited = false;
-            if (currentUser) {
-                const [likeData, favData] = await Promise.all([
-                    supabase.from('likes').select('id').eq('post_id', post.id).eq('user_id', currentUser.id).single(),
-                    supabase.from('favorites').select('id').eq('post_id', post.id).eq('user_id', currentUser.id).single()
-                ]);
-                liked = !!likeData.data;
-                favorited = !!favData.data;
-            }
-            
-            // 获取收藏数
-            const { count: favCount } = await supabase.from('favorites').select('id', { count: 'exact' }).eq('post_id', post.id);
-            
-            return {
-                ...post,
-                likes: likesRes.count || 0,
-                liked,
-                favorited,
-                favorites: favCount || 0,
-                comments: commentsRes.data || []
+        if (!data || data.length === 0) {
+            posts = [];
+            renderPosts();
+            return;
+        }
+        
+        // 批量获取点赞和收藏数据
+        const postIds = data.map(p => p.id);
+        const [likesData, favoritesData, userLikes, userFavorites] = await Promise.all([
+            supabase.from('likes').select('post_id').in('post_id', postIds),
+            supabase.from('favorites').select('post_id').in('post_id', postIds),
+            currentUser ? supabase.from('likes').select('post_id').eq('user_id', currentUser.id).in('post_id', postIds) : Promise.resolve({ data: [] }),
+            currentUser ? supabase.from('favorites').select('post_id').eq('user_id', currentUser.id).in('post_id', postIds) : Promise.resolve({ data: [] })
+        ]);
+        
+        // 统计点赞和收藏数
+        const likesCount = {};
+        const favoritesCount = {};
+        (likesData.data || []).forEach(l => { likesCount[l.post_id] = (likesCount[l.post_id] || 0) + 1; });
+        (favoritesData.data || []).forEach(f => { favoritesCount[f.post_id] = (favoritesCount[f.post_id] || 0) + 1; });
+        
+        // 用户已点赞/收藏的帖子
+        const userLikedPosts = new Set((userLikes.data || []).map(l => l.post_id));
+        const userFavoritedPosts = new Set((userFavorites.data || []).map(f => f.post_id));
+        
+        // 简化评论获取（只获取评论数，不获取详细内容）
+        const { data: commentsData } = await supabase
+            .from('comments')
+            .select('post_id')
+            .in('post_id', postIds);
+        
+        const commentsCount = {};
+        (commentsData || []).forEach(c => { commentsCount[c.post_id] = (commentsCount[c.post_id] || 0) + 1; });
+        
+        posts = data.map(post => ({
+            ...post,
+            likes: likesCount[post.id] || 0,
+            favorites: favoritesCount[post.id] || 0,
+            liked: userLikedPosts.has(post.id),
+            favorited: userFavoritedPosts.has(post.id),
+            comments: [] // 不在列表中加载评论详情，需要时再加载
+        }));
+        
+        renderPosts();
+        
+    } catch (error) {
+        console.error('加载帖子失败:', error);
+        showToast('加载失败，请刷新页面', 'error');
+    }
+}
             };
         }));
         
