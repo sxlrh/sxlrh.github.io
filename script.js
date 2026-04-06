@@ -510,11 +510,11 @@ function createPostElement(post) {
     if (post.comments && post.comments.length > 0) {
         commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
         post.comments.slice(-5).forEach(c => {
-            commentsHtml += `<li class="comment-item">
+            commentsHtml += `<li class="comment-item" onclick="openUserProfile('${c.user_id}')">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
-                    <button onclick="showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:auto;">回复</button>
+                    <button onclick="event.stopPropagation(); showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:auto;">回复</button>
                 </div>
                 <span class="comment-text">${escapeHtml(c.content)}</span>
                 <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>

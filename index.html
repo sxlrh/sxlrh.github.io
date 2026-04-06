@@ -143,6 +143,33 @@
         </div>
     </div>
 
+    <!-- 用户主页模态框 -->
+    <div id="user-profile-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 id="profile-username">用户主页</h3>
+                <span class="close-btn" onclick="closeUserProfile()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="profile-info" style="text-align:center;padding:20px 0;">
+                    <img id="profile-avatar" src="" style="width:80px;height:80px;border-radius:50%;border:3px solid #667eea;margin-bottom:15px;">
+                    <div id="profile-name" style="font-size:1.3rem;font-weight:bold;color:#333;margin-bottom:5px;"></div>
+                    <div id="profile-id" style="color:#999;font-size:0.85rem;margin-bottom:15px;"></div>
+                    <div id="profile-stats" style="display:flex;justify-content:center;gap:30px;color:#666;">
+                        <span><strong id="profile-posts-count">0</strong> 帖子</span>
+                        <span><strong id="profile-followers-count">0</strong> 粉丝</span>
+                        <span><strong id="profile-following-count">0</strong> 关注</span>
+                    </div>
+                    <div id="profile-actions" style="margin-top:15px;"></div>
+                </div>
+                <div class="profile-tabs" style="display:flex;gap:10px;margin:15px 0;border-bottom:1px solid #e0e0e0;padding-bottom:10px;">
+                    <button class="profile-tab active" onclick="showProfileTab('posts')">他的帖子</button>
+                </div>
+                <div id="profile-posts" style="max-height:300px;overflow-y:auto;"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- 好友模态框 -->
     <div id="friends-modal" class="modal">
         <div class="modal-content" style="max-width: 600px;">
