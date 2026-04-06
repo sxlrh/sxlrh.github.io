@@ -121,6 +121,17 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
+// 简单哈希函数（用于密码）
+function simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString(16);
+}
+
 // ==================== 事件绑定 ====================
 function bindEvents() {
     document.getElementById('post-button').addEventListener('click', handlePost);
@@ -186,9 +197,8 @@ async function login() {
             return;
         }
         
-        // 验证密码（存在本地）
-        const storedPassword = localStorage.getItem(`pwd_${data.id}`);
-        if (storedPassword && storedPassword !== password) {
+        // 验证密码（存在数据库）
+        if (data.password && data.password !== simpleHash(password)) {
             showToast('密码错误', 'error');
             return;
         }
@@ -243,7 +253,8 @@ async function register() {
             .insert({
                 id: userId,
                 username: username,
-                avatar: avatar
+                avatar: avatar,
+                password: simpleHash(password)
             });
         
         if (error) {
@@ -254,9 +265,6 @@ async function register() {
             }
             return;
         }
-        
-        // 存储密码到本地（简化方案，实际应该用后端加密）
-        localStorage.setItem(`pwd_${userId}`, password);
         
         currentUser = { id: userId, username, avatar };
         localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
