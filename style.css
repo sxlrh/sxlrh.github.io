@@ -512,6 +512,11 @@ main {
     color: #ff9800;
 }
 
+.action-btn.edit-btn:hover {
+    color: #4caf50;
+    background: rgba(76, 175, 80, 0.1);
+}
+
 /* ==================== 评论样式 ==================== */
 .post-comments {
     margin-top: 20px;

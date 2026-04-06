@@ -41,6 +41,9 @@
                     <div id="user-info" style="display: none; align-items: center; gap: 8px;">
                         <img id="user-avatar" src="" alt="头像" class="user-avatar" style="width:32px;height:32px;">
                         <span id="user-name" style="font-size:0.9rem;"></span>
+                        <button id="notification-btn" class="upload-btn" style="padding: 4px 8px;font-size:0.8rem;position:relative;" title="通知">
+                            <i class="fas fa-bell"></i><span id="notification-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:red;color:white;font-size:0.6rem;padding:2px 5px;border-radius:10px;">0</span>
+                        </button>
                         <button id="friends-btn" class="upload-btn" style="padding: 4px 8px;font-size:0.8rem;">好友</button>
                         <button id="settings-btn" class="upload-btn" style="padding: 4px 8px;font-size:0.8rem;">设置</button>
                         <button id="logout-btn" class="upload-btn" style="padding: 3px 6px;font-size:0.75rem;color:#999;margin-left:5px;" title="退出登录">退出</button>
@@ -139,6 +142,19 @@
                     <input type="text" id="settings-user-id" placeholder="用户ID" readonly>
                 </div>
                 <button id="save-settings" class="auth-btn">保存设置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知模态框 -->
+    <div id="notification-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3>通知</h3>
+                <span class="close-btn" onclick="closeNotificationModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="notification-list" style="max-height:400px;overflow-y:auto;">
+                <p style="text-align:center;color:#999;padding:20px;">暂无通知</p>
             </div>
         </div>
     </div>

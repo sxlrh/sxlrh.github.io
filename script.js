@@ -153,6 +153,7 @@ function bindAuthEvents() {
     document.getElementById('logout-btn').addEventListener('click', logout);
     document.getElementById('settings-btn').addEventListener('click', showSettingsModal);
     document.getElementById('friends-btn').addEventListener('click', showFriendsModal);
+    document.getElementById('notification-btn')?.addEventListener('click', showNotificationModal);
     document.getElementById('save-settings').addEventListener('click', saveSettings);
     document.getElementById('avatar-upload').addEventListener('change', handleAvatarUpload);
     document.getElementById('add-friend-btn').addEventListener('click', addFriend);
@@ -1737,6 +1738,160 @@ window.toggleFollowUser = async function(userId) {
         showToast('操作失败', 'error');
     }
 };
+
+// ==================== 通知系统 ====================
+let notifications = [];
+let lastNotificationCount = 0;
+
+window.showNotificationModal = function() {
+    document.getElementById('notification-modal').style.display = 'block';
+    loadNotifications();
+};
+
+window.closeNotificationModal = function() {
+    document.getElementById('notification-modal').style.display = 'none';
+};
+
+async function loadNotifications() {
+    if (!currentUser) return;
+    
+    const container = document.getElementById('notification-list');
+    container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载中...</p>';
+    
+    try {
+        // 获取点赞通知
+        const [likesRes, commentsRes, followsRes] = await Promise.all([
+            supabase.from('likes').select('*, posts(*), users!likes_user_id_fkey(*)').eq('posts.user_id', currentUser.id).order('created_at', { ascending: false }).limit(20),
+            supabase.from('comments').select('*, posts(*), users!comments_user_id_fkey(*)').eq('posts.user_id', currentUser.id).order('created_at', { ascending: false }).limit(20),
+            supabase.from('follows').select('*').eq('following_id', currentUser.id).order('created_at', { ascending: false }).limit(20)
+        ]);
+        
+        notifications = [];
+        
+        // 添加点赞通知
+        if (likesRes.data) {
+            likesRes.data.forEach(like => {
+                if (like.posts && like.users) {
+                    notifications.push({
+                        type: 'like',
+                        user: like.users,
+                        post: like.posts,
+                        time: like.created_at
+                    });
+                }
+            });
+        }
+        
+        // 添加评论通知
+        if (commentsRes.data) {
+            commentsRes.data.forEach(comment => {
+                if (comment.posts && comment.users && comment.users.id !== currentUser.id) {
+                    notifications.push({
+                        type: 'comment',
+                        user: comment.users,
+                        post: comment.posts,
+                        content: comment.content,
+                        time: comment.created_at
+                    });
+                }
+            });
+        }
+        
+        // 添加关注通知
+        if (followsRes.data) {
+            const userIds = followsRes.data.map(f => f.follower_id);
+            if (userIds.length > 0) {
+                const { data: followUsers } = await supabase.from('users').select('*').in('id', userIds);
+                if (followUsers) {
+                    followUsers.forEach((user, i) => {
+                        notifications.push({
+                            type: 'follow',
+                            user: user,
+                            time: followsRes.data[i].created_at
+                        });
+                    });
+                }
+            }
+        }
+        
+        // 按时间排序
+        notifications.sort((a, b) => new Date(b.time) - new Date(a.time));
+        
+        // 渲染通知
+        renderNotifications();
+        
+    } catch (error) {
+        console.error('加载通知失败:', error);
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
+    }
+}
+
+function renderNotifications() {
+    const container = document.getElementById('notification-list');
+    
+    if (notifications.length === 0) {
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无通知</p>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    notifications.forEach(n => {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding:12px;border-bottom:1px solid #e0e0e0;cursor:pointer;display:flex;align-items:center;gap:10px;';
+        
+        if (n.type === 'like') {
+            div.innerHTML = `
+                <img src="${n.user.avatar}" style="width:36px;height:36px;border-radius:50%;">
+                <div style="flex:1;">
+                    <div><span style="font-weight:600;color:#667eea;">${n.user.username}</span> 赞了你的帖子</div>
+                    <div style="color:#999;font-size:0.8rem;">${new Date(n.time).toLocaleString('zh-CN')}</div>
+                </div>
+            `;
+            div.onclick = () => { closeNotificationModal(); scrollToPost(n.post.id); };
+        } else if (n.type === 'comment') {
+            div.innerHTML = `
+                <img src="${n.user.avatar}" style="width:36px;height:36px;border-radius:50%;">
+                <div style="flex:1;">
+                    <div><span style="font-weight:600;color:#667eea;">${n.user.username}</span> 评论了你的帖子</div>
+                    <div style="color:#666;font-size:0.85rem;">"${escapeHtml(n.content)}"</div>
+                    <div style="color:#999;font-size:0.8rem;">${new Date(n.time).toLocaleString('zh-CN')}</div>
+                </div>
+            `;
+            div.onclick = () => { closeNotificationModal(); scrollToPost(n.post.id); };
+        } else if (n.type === 'follow') {
+            div.innerHTML = `
+                <img src="${n.user.avatar}" style="width:36px;height:36px;border-radius:50%;">
+                <div style="flex:1;">
+                    <div><span style="font-weight:600;color:#667eea;">${n.user.username}</span> 关注了你</div>
+                    <div style="color:#999;font-size:0.8rem;">${new Date(n.time).toLocaleString('zh-CN')}</div>
+                </div>
+            `;
+            div.onclick = () => { closeNotificationModal(); openUserProfile(n.user.id); };
+        }
+        
+        container.appendChild(div);
+    });
+}
+
+function scrollToPost(postId) {
+    const postEl = document.querySelector('[data-id="' + postId + '"]');
+    if (postEl) postEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function checkNotificationCount() {
+    if (!currentUser) return;
+    
+    supabase.from('likes').select('id', { count: 'exact' }).eq('posts.user_id', currentUser.id)
+        .then(({ count }) => {
+            if (count > 0) {
+                const badge = document.getElementById('notification-badge');
+                if (badge) {
+                    badge.textContent = count > 9 ? '9+' : count;
+                    badge.style.display = 'block';
+                }
+            }
+        });
+}
 
 // ==================== 启动 ====================
 window.addEventListener('DOMContentLoaded', () => {
