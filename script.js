@@ -553,6 +553,7 @@ function createPostElement(post) {
                     <i class="fas fa-bookmark"></i> ${post.favorites || 0}
                 </button>
                 <button class="action-btn edit-btn" data-id="${post.id}" title="编辑"><i class="fas fa-edit"></i></button>
+                <button class="action-btn report-btn" data-id="${post.id}" title="举报"><i class="fas fa-flag"></i></button>
                 <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
             </div>
         </div>
@@ -565,6 +566,7 @@ function createPostElement(post) {
     div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
     div.querySelector('.favorite-btn')?.addEventListener('click', () => toggleFavorite(post.id));
     div.querySelector('.edit-btn')?.addEventListener('click', () => showEditPost(post.id));
+    div.querySelector('.report-btn')?.addEventListener('click', () => reportPost(post.id));
     div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
     div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
     
@@ -943,6 +945,32 @@ window.deleteComment = async function(postId, commentId) {
     } catch (error) {
         console.error('删除评论失败:', error);
         showToast('删除失败', 'error');
+    }
+};
+
+// ==================== 举报功能 ====================
+window.reportPost = async function(postId) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        return;
+    }
+    
+    const reasons = ['垃圾信息', '不当内容', '抄袭侵权', '其他'];
+    const reason = prompt('请选择举报原因：\n1. 垃圾信息\n2. 不当内容\n3. 抄袭侵权\n4. 其他\n\n请输入数字（1-4）：');
+    
+    if (!reason || !['1','2','3','4'].includes(reason)) return;
+    
+    try {
+        await supabase.from('reports').insert({
+            post_id: postId,
+            user_id: currentUser.id,
+            reason: reasons[parseInt(reason) - 1],
+            status: 'pending'
+        });
+        showToast('举报成功，我们会尽快处理', 'success');
+    } catch (error) {
+        console.error('举报失败:', error);
+        showToast('举报失败，请重试', 'error');
     }
 };
 
@@ -1437,6 +1465,7 @@ createPostElement = function(post) {
                     <i class="fas fa-bookmark"></i> ${post.favorites || 0}
                 </button>
                 <button class="action-btn edit-btn" data-id="${post.id}" title="编辑"><i class="fas fa-edit"></i></button>
+                <button class="action-btn report-btn" data-id="${post.id}" title="举报"><i class="fas fa-flag"></i></button>
                 <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
             </div>
         </div>
@@ -1449,6 +1478,7 @@ createPostElement = function(post) {
     div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
     div.querySelector('.favorite-btn')?.addEventListener('click', () => toggleFavorite(post.id));
     div.querySelector('.edit-btn')?.addEventListener('click', () => showEditPost(post.id));
+    div.querySelector('.report-btn')?.addEventListener('click', () => reportPost(post.id));
     div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
     div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
     

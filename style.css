@@ -517,6 +517,11 @@ main {
     background: rgba(76, 175, 80, 0.1);
 }
 
+.action-btn.report-btn:hover {
+    color: #ff5722;
+    background: rgba(255, 87, 34, 0.1);
+}
+
 /* ==================== 评论样式 ==================== */
 .post-comments {
     margin-top: 20px;
