@@ -20,6 +20,29 @@ let audioChunks = [];
 let viewedPosts = new Set();
 let subscriptions = [];
 
+// 加载浏览记录
+function loadViewedPosts() {
+    if (!currentUser) return;
+    try {
+        const stored = localStorage.getItem(`viewed_${currentUser.id}`);
+        if (stored) {
+            viewedPosts = new Set(JSON.parse(stored));
+        }
+    } catch (e) {
+        console.error('加载浏览记录失败:', e);
+    }
+}
+
+// 保存浏览记录
+function saveViewedPosts() {
+    if (!currentUser) return;
+    try {
+        localStorage.setItem(`viewed_${currentUser.id}`, JSON.stringify([...viewedPosts]));
+    } catch (e) {
+        console.error('保存浏览记录失败:', e);
+    }
+}
+
 // ==================== 初始化 ====================
 async function init() {
     showLoading(true);
@@ -40,6 +63,7 @@ async function init() {
         }
         
         updateUserInfo();
+        loadViewedPosts();
         await loadPosts();
         bindEvents();
         bindAuthEvents();
@@ -347,6 +371,7 @@ async function saveSettings() {
     showLoading(true);
     
     try {
+        // 更新用户表
         const { error } = await supabase
             .from('users')
             .update({ username, avatar })
@@ -361,13 +386,32 @@ async function saveSettings() {
             return;
         }
         
+        // 同步更新所有帖子的头像和用户名
+        const { data: userPosts } = await supabase
+            .from('posts')
+            .select('id')
+            .eq('user_id', currentUser.id);
+        
+        if (userPosts && userPosts.length > 0) {
+            for (const post of userPosts) {
+                await supabase
+                    .from('posts')
+                    .update({ username: username, user_avatar: avatar })
+                    .eq('id', post.id);
+            }
+        }
+        
+        // 更新本地用户信息
         currentUser.username = username;
         currentUser.avatar = avatar;
         localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
         
         updateUserInfo();
         document.getElementById('settings-modal').style.display = 'none';
-        showToast('设置保存成功', 'success');
+        showToast('设置保存成功，已同步更新所有帖子', 'success');
+        
+        // 刷新帖子显示新头像
+        await loadPosts();
         
     } catch (error) {
         console.error(error);
@@ -470,6 +514,7 @@ function createPostElement(post) {
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
+                    <button onclick="showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:auto;">回复</button>
                 </div>
                 <span class="comment-text">${escapeHtml(c.content)}</span>
                 <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
@@ -506,16 +551,19 @@ function createPostElement(post) {
 
 async function incrementViewCount(postId) {
     try {
-        await supabase.rpc('increment_views', { post_id: postId });
-    } catch (error) {
-        // 如果 RPC 不存在，用普通更新
         const post = posts.find(p => p.id === postId);
         if (post) {
+            const newViews = (post.views || 0) + 1;
             await supabase
                 .from('posts')
-                .update({ views: (post.views || 0) + 1 })
+                .update({ views: newViews })
                 .eq('id', postId);
+            post.views = newViews;
+            // 保存浏览记录
+            saveViewedPosts();
         }
+    } catch (error) {
+        console.error('浏览量更新失败:', error);
     }
 }
 
@@ -1280,6 +1328,95 @@ function hideSkeleton() {
         skeletonContainer.style.display = 'none';
     }
 }
+
+// ==================== 评论回复功能 ====================
+window.showReplyInput = function(postId, commentId, replyToUsername) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        showAuthModal();
+        return;
+    }
+    
+    const replyInput = document.createElement('div');
+    replyInput.style.cssText = 'display:flex;gap:10px;margin-top:10px;padding:10px;background:#f8f9fa;border-radius:8px;';
+    replyInput.innerHTML = `
+        <input type="text" class="reply-input" placeholder="回复 @${replyToUsername}..." 
+               style="flex:1;padding:8px 12px;border:1px solid #e0e0e0;border-radius:20px;font-size:0.85rem;">
+        <button class="reply-submit-btn" style="padding:8px 15px;background:#667eea;color:white;border:none;border-radius:20px;cursor:pointer;font-size:0.85rem;">
+            发送
+        </button>
+    `;
+    
+    const commentItems = document.querySelectorAll('.comment-item');
+    commentItems.forEach(item => {
+        const usernameSpan = item.querySelector('span[style*="color:#667eea"]');
+        if (usernameSpan && usernameSpan.textContent === replyToUsername) {
+            const existingReply = item.querySelector('.reply-input-container');
+            if (existingReply) existingReply.remove();
+            
+            replyInput.className = 'reply-input-container';
+            item.appendChild(replyInput);
+            
+            const input = replyInput.querySelector('.reply-input');
+            const submitBtn = replyInput.querySelector('.reply-submit-btn');
+            
+            submitBtn.onclick = () => replyComment(postId, commentId, input.value);
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') replyComment(postId, commentId, input.value);
+            });
+            input.focus();
+        }
+    });
+};
+
+window.replyComment = async function(postId, commentId, content) {
+    if (!content.trim()) {
+        showToast('请输入回复内容', 'error');
+        return;
+    }
+    
+    try {
+        const { data: post } = await supabase
+            .from('posts')
+            .select('comments')
+            .eq('id', postId)
+            .single();
+        
+        if (!post || !post.comments) {
+            showToast('评论不存在', 'error');
+            return;
+        }
+        
+        const comment = post.comments.find(c => c.id === commentId);
+        if (!comment) {
+            showToast('评论不存在', 'error');
+            return;
+        }
+        
+        if (!comment.replies) comment.replies = [];
+        
+        comment.replies.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            user_id: currentUser.id,
+            username: currentUser.username,
+            user_avatar: currentUser.avatar,
+            content: content.trim(),
+            created_at: new Date().toISOString()
+        });
+        
+        await supabase
+            .from('posts')
+            .update({ comments: post.comments })
+            .eq('id', postId);
+        
+        await loadPosts();
+        showToast('回复成功', 'success');
+        
+    } catch (error) {
+        console.error('回复失败:', error);
+        showToast('回复失败', 'error');
+    }
+};
 
 // ==================== 启动 ====================
 window.addEventListener('DOMContentLoaded', () => {
