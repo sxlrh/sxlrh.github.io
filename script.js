@@ -523,11 +523,13 @@ function createPostElement(post) {
     if (post.comments && post.comments.length > 0) {
         commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
         post.comments.slice(-5).forEach(c => {
+            const isCommentOwner = currentUser && c.user_id === currentUser.id;
             commentsHtml += `<li class="comment-item" onclick="openUserProfile('${c.user_id}')">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
-                    <button onclick="event.stopPropagation(); showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:auto;">回复</button>
+                    <button onclick="event.stopPropagation(); showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;">回复</button>
+                    ${isCommentOwner ? `<button onclick="event.stopPropagation(); deleteComment('${post.id}', '${c.id}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
                 </div>
                 <span class="comment-text">${escapeHtml(c.content)}</span>
                 <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
@@ -549,6 +551,7 @@ function createPostElement(post) {
                 <button class="action-btn favorite-btn ${post.favorited ? 'favorited' : ''}" data-id="${post.id}" title="收藏">
                     <i class="fas fa-bookmark"></i> ${post.favorites || 0}
                 </button>
+                <button class="action-btn edit-btn" data-id="${post.id}" title="编辑"><i class="fas fa-edit"></i></button>
                 <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
             </div>
         </div>
@@ -560,6 +563,7 @@ function createPostElement(post) {
     
     div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
     div.querySelector('.favorite-btn')?.addEventListener('click', () => toggleFavorite(post.id));
+    div.querySelector('.edit-btn')?.addEventListener('click', () => showEditPost(post.id));
     div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
     div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
     
@@ -810,6 +814,31 @@ async function toggleFavorite(postId) {
     }
 }
 
+// ==================== 帖子编辑 ====================
+window.showEditPost = function(postId) {
+    const post = posts.find(p => p.id === postId);
+    if (!post || post.user_id !== currentUser.id) {
+        showToast('无权限编辑', 'error');
+        return;
+    }
+    
+    const newContent = prompt('编辑帖子内容：', post.content);
+    if (newContent === null || newContent.trim() === post.content) return;
+    
+    showLoading(true);
+    
+    supabase.from('posts').update({ content: newContent.trim() }).eq('id', postId)
+        .then(() => {
+            showToast('编辑成功', 'success');
+            loadPosts();
+        })
+        .catch(error => {
+            console.error('编辑失败:', error);
+            showToast('编辑失败', 'error');
+        })
+        .finally(() => showLoading(false));
+};
+
 async function deletePost(postId) {
     if (!currentUser) {
         showToast('请先登录', 'error');
@@ -880,6 +909,41 @@ async function addComment(postId) {
         showToast('评论失败', 'error');
     }
 }
+
+// ==================== 评论删除 ====================
+window.deleteComment = async function(postId, commentId) {
+    if (!currentUser) {
+        showToast('请先登录', 'error');
+        return;
+    }
+    
+    if (!confirm('确定删除这条评论？')) return;
+    
+    try {
+        const post = posts.find(p => p.id === postId);
+        if (!post || !post.comments) return;
+        
+        const comment = post.comments.find(c => c.id === commentId);
+        if (!comment || comment.user_id !== currentUser.id) {
+            showToast('无权限删除', 'error');
+            return;
+        }
+        
+        post.comments = post.comments.filter(c => c.id !== commentId);
+        
+        await supabase
+            .from('posts')
+            .update({ comments: post.comments })
+            .eq('id', postId);
+        
+        await loadPosts();
+        showToast('删除成功', 'success');
+        
+    } catch (error) {
+        console.error('删除评论失败:', error);
+        showToast('删除失败', 'error');
+    }
+};
 
 // ==================== 排行榜 ====================
 window.showRanking = function(type) {
@@ -1340,10 +1404,13 @@ createPostElement = function(post) {
     if (post.comments && post.comments.length > 0) {
         commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
         post.comments.slice(-5).forEach(c => {
+            const isCommentOwner = currentUser && c.user_id === currentUser.id;
             commentsHtml += `<li class="comment-item" onclick="openUserProfile('${c.user_id}')">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
+                    <button onclick="event.stopPropagation(); showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;">回复</button>
+                    ${isCommentOwner ? `<button onclick="event.stopPropagation(); deleteComment('${post.id}', '${c.id}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
                 </div>
                 <span class="comment-text">${parseContent(c.content)}</span>
                 <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
@@ -1368,6 +1435,7 @@ createPostElement = function(post) {
                 <button class="action-btn favorite-btn ${post.favorited ? 'favorited' : ''}" data-id="${post.id}" title="收藏">
                     <i class="fas fa-bookmark"></i> ${post.favorites || 0}
                 </button>
+                <button class="action-btn edit-btn" data-id="${post.id}" title="编辑"><i class="fas fa-edit"></i></button>
                 <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
             </div>
         </div>
@@ -1379,6 +1447,7 @@ createPostElement = function(post) {
     
     div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
     div.querySelector('.favorite-btn')?.addEventListener('click', () => toggleFavorite(post.id));
+    div.querySelector('.edit-btn')?.addEventListener('click', () => showEditPost(post.id));
     div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
     div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
     
