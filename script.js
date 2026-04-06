@@ -536,16 +536,6 @@ async function loadPosts() {
         showToast('加载失败，请刷新页面', 'error');
     }
 }
-            };
-        }));
-        
-        renderPosts();
-        
-    } catch (error) {
-        console.error('加载帖子失败:', error);
-        showToast('加载失败', 'error');
-    }
-}
 
 function renderPosts() {
     const container = document.getElementById('posts-container');
