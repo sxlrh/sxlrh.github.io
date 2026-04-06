@@ -250,6 +250,7 @@ async function register() {
 }
 
 function logout() {
+    if (!confirm('确定要退出登录吗？')) return;
     currentUser = null;
     localStorage.removeItem('treeholeUser');
     updateUserInfo();
