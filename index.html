@@ -340,7 +340,15 @@
     </footer>
 
     <script type="module" src="script.js"></script>
-    
+    <!-- 安全网：如果 JS 10秒还没加载完，强制关闭加载遮罩 -->
+    <script>
+        setTimeout(function() {
+            var loader = document.getElementById('loading-overlay');
+            if (loader && loader.style.display !== 'none') {
+                loader.style.display = 'none';
+            }
+        }, 10000);
+    </script>
     <!-- 夜间模式脚本 -->
     <script>
         // 夜间模式切换
