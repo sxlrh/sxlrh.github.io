@@ -1003,9 +1003,15 @@ footer p {
 /* 图片放大 */
 .post-item-media img.zoomed {
     cursor: zoom-out;
-    transform: scale(1.5);
-    z-index: 100;
-    position: relative;
+    z-index: 1000;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    max-width: 90vw;
+    max-height: 90vh;
+    transform: translate(-50%, -50%) scale(2);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.7);
+    border-radius: 0;
 }
 
 /* 无内容提示 */

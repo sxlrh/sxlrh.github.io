@@ -70,6 +70,7 @@ async function init() {
         
         updateUserInfo();
         loadViewedPosts();
+        checkNotificationCount();
         
         // 绑定事件
         bindEvents();
@@ -131,6 +132,11 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// 安全地拼接 onclick 字符串中的 ID/用户名（防止 XSS 注入）
+function safeAttr(str) {
+    return String(str || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
 }
 
 function generateId() {
@@ -577,7 +583,7 @@ function createPostElement(post) {
         media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice_url}"></audio></div>`;
     }
     
-    const userHtml = `<div class="post-user" onclick="openUserProfile('${post.user_id}')" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;">
+    const userHtml = `<div class="post-user" onclick="openUserProfile('${safeAttr(post.user_id)}')" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;">
         <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
         <span style="font-weight:600;color:#667eea;">${post.username}</span>
     </div>`;
@@ -601,15 +607,15 @@ function createPostElement(post) {
                     ${r.reply_to ? `<span style="color:#999;font-size:0.8rem;"> 回复 </span><span style="font-weight:600;color:#667eea;">${r.reply_to}</span>` : ''}
                     <span style="color:var(--text-primary);"> ${parseContent(r.content)}</span>
                     <span class="comment-time" style="margin-left:8px;">${new Date(r.created_at).toLocaleString('zh-CN')}</span>
-                    ${isReplyOwner ? `<button onclick="event.stopPropagation(); deleteComment('${post.id}', '${r.id}')" style="background:none;border:none;color:#999;font-size:0.7rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
+                    ${isReplyOwner ? `<button onclick="event.stopPropagation(); deleteComment('${safeAttr(post.id)}', '${safeAttr(r.id)}')" style="background:none;border:none;color:#999;font-size:0.7rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
                 </div>`;
             });
             commentsHtml += `<li class="comment-item" onclick="openUserProfile('${c.user_id}')">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
-                    <button onclick="event.stopPropagation(); showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;">回复</button>
-                    ${isCommentOwner ? `<button onclick="event.stopPropagation(); deleteComment('${post.id}', '${c.id}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
+                    <button onclick="event.stopPropagation(); showReplyInput('${safeAttr(post.id)}', '${safeAttr(c.id)}', '${safeAttr(c.username)}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;">回复</button>
+                    ${isCommentOwner ? `<button onclick="event.stopPropagation(); deleteComment('${safeAttr(post.id)}', '${safeAttr(c.id)}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
                 </div>
                 <span class="comment-text">${parseContent(c.content)}</span>
                 <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
@@ -821,7 +827,7 @@ async function handlePost() {
 }
 
 // ==================== 互动 ====================
-async function toggleLike(postId) {
+window.toggleLike = async function(postId) {
     if (!currentUser) {
         showToast('请先登录', 'error');
         showAuthModal();
@@ -1120,7 +1126,7 @@ window.showRanking = function(type, el) {
                     <div class="post-item-content">${escapeHtml(post.content || '')}</div>
                     <div class="post-item-meta">
                         <span class="post-time">${new Date(post.created_at).toLocaleString('zh-CN')} · ${post.views || 0} 浏览</span>
-                        <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" onclick="toggleLike('${post.id}')">
+                        <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" onclick="toggleLike('${safeAttr(post.id)}')">
                             <i class="fas fa-heart"></i> ${post.likes}
                         </button>
                     </div>
@@ -1328,12 +1334,15 @@ window.importData = function(e) {
 window.toggleImageZoom = function(img) {
     if (img.classList.contains('zoomed')) {
         img.classList.remove('zoomed');
-        img.style.transform = 'scale(1)';
-        img.style.cursor = 'zoom-in';
     } else {
         img.classList.add('zoomed');
-        img.style.transform = 'scale(2)';
-        img.style.cursor = 'zoom-out';
+        // 点击遮罩层关闭
+        const closeHandler = (e) => {
+            if (e.target === img) return;
+            img.classList.remove('zoomed');
+            document.removeEventListener('click', closeHandler, true);
+        };
+        document.addEventListener('click', closeHandler, true);
     }
 };
 
@@ -1343,6 +1352,9 @@ function parseContent(text) {
     
     // 转义 HTML
     let result = escapeHtml(text);
+    
+    // 处理换行（在话题标签解析之前，避免标签内的换行被干扰）
+    result = result.replace(/\n/g, '<br>');
     
     // 解析话题标签 #话题（&#39; 代替单引号防 XSS）
     result = result.replace(/#(\S+)/g, '<span class="topic-tag" onclick="searchTopic(&#39;$1&#39;)">#$1</span>');
@@ -1396,23 +1408,15 @@ async function loadMorePosts() {
         if (data && data.length > 0) {
             currentPage++;
             
-            // 获取点赞和评论
+            // 获取点赞、收藏和评论
             const newPosts = await Promise.all(data.map(async (post) => {
-                const [likesRes, commentsRes] = await Promise.all([
+                const [likesRes, favoritesRes, userLikeRes, userFavRes, commentsRes] = await Promise.all([
                     supabase.from('likes').select('id', { count: 'exact' }).eq('post_id', post.id),
+                    supabase.from('favorites').select('id', { count: 'exact' }).eq('post_id', post.id),
+                    currentUser ? supabase.from('likes').select('id').eq('post_id', post.id).eq('user_id', currentUser.id).single() : Promise.resolve({ data: null }),
+                    currentUser ? supabase.from('favorites').select('id').eq('post_id', post.id).eq('user_id', currentUser.id).single() : Promise.resolve({ data: null }),
                     supabase.from('comments').select('*').eq('post_id', post.id)
                 ]);
-                
-                let liked = false;
-                if (currentUser) {
-                    const { data: likeData } = await supabase
-                        .from('likes')
-                        .select('id')
-                        .eq('post_id', post.id)
-                        .eq('user_id', currentUser.id)
-                        .single();
-                    liked = !!likeData;
-                }
                 
                 // 分组评论为 { top, replies } 结构
                 const topComments = [];
@@ -1429,7 +1433,9 @@ async function loadMorePosts() {
                 return {
                     ...post,
                     likes: likesRes.count || 0,
-                    liked,
+                    liked: !!userLikeRes.data,
+                    favorites: favoritesRes.count || 0,
+                    favorited: !!userFavRes.data,
                     comments: { top: topComments, replies: repliesMap }
                 };
             }));
@@ -1726,6 +1732,8 @@ window.showProfileTab = function(tab, el) {
         document.getElementById('profile-posts').style.display = 'block';
         document.getElementById('profile-favorites').style.display = 'none';
     } else if (tab === 'favorites') {
+        document.getElementById('profile-posts').style.display = 'none';
+        document.getElementById('profile-favorites').style.display = 'block';
         const userId = window._currentProfileUserId;
         if (userId) loadUserFavorites(userId);
     }
