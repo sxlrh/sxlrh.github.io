@@ -78,6 +78,9 @@ async function init() {
         // 加载帖子
         await loadPosts();
         
+        // 启动实时订阅
+        setupRealtimeSubscription();
+        
     } catch (error) {
         console.error('初始化失败:', error);
         showToast('加载失败，请重试', 'error');
@@ -181,7 +184,8 @@ function hideAuthModal() { document.getElementById('auth-modal').style.display =
 
 window.switchAuthTab = function(tab) {
     document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    const activeTab = document.querySelector(`.auth-tab[onclick*="${tab}"]`) || event?.target;
+    if (activeTab) activeTab.classList.add('active');
     document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
     document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
     document.getElementById('modal-title').textContent = tab === 'login' ? '登录' : '注册';
@@ -501,12 +505,23 @@ async function loadPosts() {
         if (likesData?.data) likesData.data.forEach(l => { likesCount[l.post_id] = (likesCount[l.post_id] || 0) + 1; });
         if (favoritesData?.data) favoritesData.data.forEach(f => { favoritesCount[f.post_id] = (favoritesCount[f.post_id] || 0) + 1; });
         
-        // 按帖子分组评论
+        // 按帖子分组评论（顶级评论 + 子回复）
         const commentsByPost = {};
         if (commentsRes?.data) {
             commentsRes.data.forEach(c => {
-                if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = [];
-                commentsByPost[c.post_id].push(c);
+                if (!commentsByPost[c.post_id]) {
+                    commentsByPost[c.post_id] = { top: [], replies: {} };
+                }
+                if (c.parent_id) {
+                    // 子回复
+                    if (!commentsByPost[c.post_id].replies[c.parent_id]) {
+                        commentsByPost[c.post_id].replies[c.parent_id] = [];
+                    }
+                    commentsByPost[c.post_id].replies[c.parent_id].push(c);
+                } else {
+                    // 顶级评论
+                    commentsByPost[c.post_id].top.push(c);
+                }
             });
         }
         
@@ -520,7 +535,7 @@ async function loadPosts() {
             favorites: favoritesCount[post.id] || 0,
             liked: userLikedPosts.has(post.id),
             favorited: userFavoritedPosts.has(post.id),
-            comments: commentsByPost[post.id] || []
+            comments: commentsByPost[post.id] || { top: [], replies: {} }
         }));
         
         renderPosts();
@@ -568,16 +583,33 @@ function createPostElement(post) {
         media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice_url}"></audio></div>`;
     }
     
-    const userHtml = `<div class="post-user" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    const userHtml = `<div class="post-user" onclick="openUserProfile('${post.user_id}')" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;">
         <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
         <span style="font-weight:600;color:#667eea;">${post.username}</span>
     </div>`;
     
     let commentsHtml = '';
-    if (post.comments && post.comments.length > 0) {
-        commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
-        post.comments.slice(-5).forEach(c => {
+    const commentData = post.comments;
+    const topComments = commentData?.top || [];
+    const repliesMap = commentData?.replies || {};
+    const totalComments = topComments.length + Object.values(repliesMap).reduce((sum, arr) => sum + arr.length, 0);
+    
+    if (topComments.length > 0) {
+        commentsHtml = `<div class="post-comments"><h4>评论 (${totalComments})</h4><ul class="comments-list">`;
+        topComments.slice(-5).forEach(c => {
             const isCommentOwner = currentUser && c.user_id === currentUser.id;
+            const replies = repliesMap[c.id] || [];
+            let repliesHtml = '';
+            replies.slice(-3).forEach(r => {
+                const isReplyOwner = currentUser && r.user_id === currentUser.id;
+                repliesHtml += `<div class="comment-reply" style="margin:5px 0 5px 25px;padding:5px 8px;background:rgba(102,126,234,0.05);border-radius:6px;font-size:0.85rem;">
+                    <span style="font-weight:600;color:#667eea;">${r.username}</span>
+                    ${r.reply_to ? `<span style="color:#999;font-size:0.8rem;"> 回复 </span><span style="font-weight:600;color:#667eea;">${r.reply_to}</span>` : ''}
+                    <span style="color:var(--text-primary);"> ${parseContent(r.content)}</span>
+                    <span class="comment-time" style="margin-left:8px;">${new Date(r.created_at).toLocaleString('zh-CN')}</span>
+                    ${isReplyOwner ? `<button onclick="event.stopPropagation(); deleteComment('${post.id}', '${r.id}')" style="background:none;border:none;color:#999;font-size:0.7rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
+                </div>`;
+            });
             commentsHtml += `<li class="comment-item" onclick="openUserProfile('${c.user_id}')">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
@@ -585,8 +617,9 @@ function createPostElement(post) {
                     <button onclick="event.stopPropagation(); showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;">回复</button>
                     ${isCommentOwner ? `<button onclick="event.stopPropagation(); deleteComment('${post.id}', '${c.id}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
                 </div>
-                <span class="comment-text">${escapeHtml(c.content)}</span>
+                <span class="comment-text">${parseContent(c.content)}</span>
                 <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
+                ${repliesHtml}
             </li>`;
         });
         commentsHtml += '</ul></div>';
@@ -594,7 +627,7 @@ function createPostElement(post) {
     
     div.innerHTML = `
         ${userHtml}
-        <div class="post-item-content">${escapeHtml(post.content || '')}</div>
+        <div class="post-item-content">${parseContent(post.content)}</div>
         ${media}
         <div class="post-item-meta">
             <span class="post-time">${new Date(post.created_at).toLocaleString('zh-CN')} · ${post.views || 0} 浏览</span>
@@ -998,10 +1031,19 @@ window.deleteComment = async function(postId, commentId) {
         // 从本地列表移除（如果还存在的话）
         const post = posts.find(p => p.id === postId);
         if (post && post.comments) {
-            post.comments = post.comments.filter(c => c.id !== commentId);
+            // 顶级评论
+            if (post.comments.top) {
+                post.comments.top = post.comments.top.filter(c => c.id !== commentId);
+                delete post.comments.replies[commentId]; // 删子回复
+            }
+            // 子回复
+            if (post.comments.replies) {
+                for (const parentId in post.comments.replies) {
+                    post.comments.replies[parentId] = post.comments.replies[parentId].filter(c => c.id !== commentId);
+                }
+            }
             renderPosts();
         } else {
-            // 本地没有数据，重新加载
             await loadPosts();
         }
         
@@ -1040,14 +1082,18 @@ window.reportPost = async function(postId) {
 };
 
 // ==================== 排行榜 ====================
-window.showRanking = function(type) {
+window.showRanking = function(type, el) {
     document.querySelectorAll('.ranking-tab').forEach(t => t.classList.remove('active'));
-    if (event?.target) event.target.classList.add('active');
+    if (el) el.classList.add('active');
     
     let sorted = [...posts];
     if (type === 'likes') sorted.sort((a, b) => (b.likes || 0) - (a.likes || 0));
     else if (type === 'views') sorted.sort((a, b) => (b.views || 0) - (a.views || 0));
-    else if (type === 'comments') sorted.sort((a, b) => (b.comments?.length || 0) - (a.comments?.length || 0));
+    else if (type === 'comments') sorted.sort((a, b) => {
+                const countA = (a.comments?.top?.length || 0) + Object.values(a.comments?.replies || {}).reduce((s, arr) => s + arr.length, 0);
+                const countB = (b.comments?.top?.length || 0) + Object.values(b.comments?.replies || {}).reduce((s, arr) => s + arr.length, 0);
+                return countB - countA;
+            });
     
     const container = document.getElementById('ranking-container');
     container.innerHTML = '';
@@ -1091,9 +1137,9 @@ function showFriendsModal() {
     }
 }
 
-window.switchFriendsTab = function(tab) {
+window.switchFriendsTab = function(tab, el) {
     document.querySelectorAll('.friends-tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    if (el) el.classList.add('active');
     document.querySelectorAll('.friends-content').forEach(c => c.style.display = 'none');
     document.getElementById(tab).style.display = 'block';
     if (tab === 'list') loadFriends();
@@ -1467,89 +1513,6 @@ function setupPullRefresh() {
     });
 }
 
-// ==================== 修改 createPostElement 使用话题解析 ====================
-const originalCreatePostElement = createPostElement;
-createPostElement = function(post) {
-    const div = document.createElement('div');
-    div.className = 'post-item';
-    div.dataset.id = post.id;
-    
-    // 浏览量计数
-    if (!viewedPosts.has(post.id)) {
-        viewedPosts.add(post.id);
-        incrementViewCount(post.id);
-    }
-    
-    let media = '';
-    if (post.image_url) {
-        media = `<div class="post-item-media"><img src="${post.image_url}" alt="图片" onclick="toggleImageZoom(this)" loading="lazy"></div>`;
-    } else if (post.video_url) {
-        media = `<div class="post-item-media"><video controls preload="metadata"><source src="${post.video_url}"></video></div>`;
-    } else if (post.voice_url) {
-        media = `<div class="post-item-media"><audio controls preload="metadata"><source src="${post.voice_url}"></audio></div>`;
-    }
-    
-    const userHtml = `<div class="post-user" onclick="openUserProfile('${post.user_id}')" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;">
-        <img src="${post.user_avatar}" style="width:30px;height:30px;border-radius:50%;">
-        <span style="font-weight:600;color:#667eea;">${post.username}</span>
-    </div>`;
-    
-    let commentsHtml = '';
-    if (post.comments && post.comments.length > 0) {
-        commentsHtml = `<div class="post-comments"><h4>评论 (${post.comments.length})</h4><ul class="comments-list">`;
-        post.comments.slice(-5).forEach(c => {
-            const isCommentOwner = currentUser && c.user_id === currentUser.id;
-            commentsHtml += `<li class="comment-item" onclick="openUserProfile('${c.user_id}')">
-                <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
-                    <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
-                    <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
-                    <button onclick="event.stopPropagation(); showReplyInput('${post.id}', '${c.id}', '${c.username}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;">回复</button>
-                    ${isCommentOwner ? `<button onclick="event.stopPropagation(); deleteComment('${post.id}', '${c.id}')" style="background:none;border:none;color:#999;font-size:0.75rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
-                </div>
-                <span class="comment-text">${parseContent(c.content)}</span>
-                <span class="comment-time">${new Date(c.created_at).toLocaleString('zh-CN')}</span>
-            </li>`;
-        });
-        commentsHtml += '</ul></div>';
-    }
-    
-    // 使用话题解析
-    const parsedContent = parseContent(post.content);
-    
-    div.innerHTML = `
-        ${userHtml}
-        <div class="post-item-content">${parsedContent}</div>
-        ${media}
-        <div class="post-item-meta">
-            <span class="post-time">${new Date(post.created_at).toLocaleString('zh-CN')} · ${post.views || 0} 浏览</span>
-            <div class="post-item-actions">
-                <button class="action-btn like-btn ${post.liked ? 'liked' : ''}" data-id="${post.id}">
-                    <i class="fas fa-heart"></i> ${post.likes}
-                </button>
-                <button class="action-btn favorite-btn ${post.favorited ? 'favorited' : ''}" data-id="${post.id}" title="收藏">
-                    <i class="fas fa-bookmark"></i> ${post.favorites || 0}
-                </button>
-                <button class="action-btn edit-btn" data-id="${post.id}" title="编辑"><i class="fas fa-edit"></i></button>
-                <button class="action-btn report-btn" data-id="${post.id}" title="举报"><i class="fas fa-flag"></i></button>
-                <button class="action-btn delete-btn" data-id="${post.id}"><i class="fas fa-trash"></i></button>
-            </div>
-        </div>
-        ${commentsHtml}
-        <div class="comment-form">
-            <input type="text" class="comment-input" placeholder="写下你的评论..." data-id="${post.id}">
-            <button class="comment-btn" data-id="${post.id}"><i class="fas fa-paper-plane"></i></button>
-        </div>`;
-    
-    div.querySelector('.like-btn')?.addEventListener('click', () => toggleLike(post.id));
-    div.querySelector('.favorite-btn')?.addEventListener('click', () => toggleFavorite(post.id));
-    div.querySelector('.edit-btn')?.addEventListener('click', () => showEditPost(post.id));
-    div.querySelector('.report-btn')?.addEventListener('click', () => reportPost(post.id));
-    div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
-    div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
-    
-    return div;
-};
-
 // ==================== 隐藏骨架屏 ====================
 function hideSkeleton() {
     const skeletonContainer = document.getElementById('skeleton-container');
@@ -1605,38 +1568,39 @@ window.replyComment = async function(postId, commentId, content) {
     }
     
     try {
-        const { data: post } = await supabase
-            .from('posts')
-            .select('comments')
-            .eq('id', postId)
+        // 直接往 comments 表插入回复
+        const { data: parentComment } = await supabase
+            .from('comments')
+            .select('id, username')
+            .eq('id', commentId)
             .single();
         
-        if (!post || !post.comments) {
-            showToast('评论不存在', 'error');
+        if (!parentComment) {
+            showToast('原评论不存在', 'error');
             return;
         }
         
-        const comment = post.comments.find(c => c.id === commentId);
-        if (!comment) {
-            showToast('评论不存在', 'error');
+        const { error } = await supabase
+            .from('comments')
+            .insert({
+                post_id: postId,
+                parent_id: commentId,
+                user_id: currentUser.id,
+                username: currentUser.username,
+                user_avatar: currentUser.avatar,
+                content: content.trim(),
+                reply_to: parentComment.username
+            });
+        
+        if (error) {
+            console.error('回复失败:', error);
+            showToast('回复失败', 'error');
             return;
         }
         
-        if (!comment.replies) comment.replies = [];
-        
-        comment.replies.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            user_id: currentUser.id,
-            username: currentUser.username,
-            user_avatar: currentUser.avatar,
-            content: content.trim(),
-            created_at: new Date().toISOString()
-        });
-        
-        await supabase
-            .from('posts')
-            .update({ comments: post.comments })
-            .eq('id', postId);
+        // 移除回复输入框
+        const replyContainer = document.querySelector('.reply-input-container');
+        if (replyContainer) replyContainer.remove();
         
         await loadPosts();
         showToast('回复成功', 'success');
@@ -1741,9 +1705,9 @@ window.closeUserProfile = function() {
 };
 
 // 显示用户主页的标签页
-window.showProfileTab = function(tab) {
+window.showProfileTab = function(tab, el) {
     document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    if (el) el.classList.add('active');
     
     if (tab === 'posts') {
         document.getElementById('profile-posts').style.display = 'block';
