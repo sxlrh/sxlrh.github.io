@@ -182,9 +182,9 @@ function bindAuthEvents() {
 function showAuthModal() { document.getElementById('auth-modal').style.display = 'block'; }
 function hideAuthModal() { document.getElementById('auth-modal').style.display = 'none'; }
 
-window.switchAuthTab = function(tab) {
+window.switchAuthTab = function(tab, el) {
     document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-    const activeTab = document.querySelector(`.auth-tab[onclick*="${tab}"]`) || event?.target;
+    const activeTab = el || document.querySelector(`.auth-tab[onclick*="${tab}"]`);
     if (activeTab) activeTab.classList.add('active');
     document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
     document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
@@ -1343,11 +1343,11 @@ function parseContent(text) {
     // 转义 HTML
     let result = escapeHtml(text);
     
-    // 解析话题标签 #话题
-    result = result.replace(/#(\S+)/g, '<span class="topic-tag" onclick="searchTopic(\'$1\')">#$1</span>');
+    // 解析话题标签 #话题（&#39; 代替单引号防 XSS）
+    result = result.replace(/#(\S+)/g, '<span class="topic-tag" onclick="searchTopic(&#39;$1&#39;)">#$1</span>');
     
-    // 解析 @提及
-    result = result.replace(/@(\S+)/g, '<span class="mention-tag" onclick="mentionUser(\'$1\')">@$1</span>');
+    // 解析 @提及（&#39; 代替单引号防 XSS）
+    result = result.replace(/@(\S+)/g, '<span class="mention-tag" onclick="mentionUser(&#39;$1&#39;)">@$1</span>');
     
     // 解析链接
     result = result.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#667eea;">$1</a>');
@@ -1413,11 +1413,23 @@ async function loadMorePosts() {
                     liked = !!likeData;
                 }
                 
+                // 分组评论为 { top, replies } 结构
+                const topComments = [];
+                const repliesMap = {};
+                (commentsRes.data || []).forEach(c => {
+                    if (c.parent_id) {
+                        if (!repliesMap[c.parent_id]) repliesMap[c.parent_id] = [];
+                        repliesMap[c.parent_id].push(c);
+                    } else {
+                        topComments.push(c);
+                    }
+                });
+                
                 return {
                     ...post,
                     likes: likesRes.count || 0,
                     liked,
-                    comments: commentsRes.data || []
+                    comments: { top: topComments, replies: repliesMap }
                 };
             }));
             
