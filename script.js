@@ -976,31 +976,35 @@ window.deleteComment = async function(postId, commentId) {
     if (!confirm('确定删除这条评论？')) return;
     
     try {
-        const post = posts.find(p => p.id === postId);
-        if (!post || !post.comments) return;
-        
-        const comment = post.comments.find(c => c.id === commentId);
-        if (!comment) {
-            showToast('评论不存在', 'error');
-            return;
-        }
-        
-        // 从 comments 表删除
-        const { error } = await supabase
+        // 直接从 comments 表删除，不依赖本地数据
+        const { data, error } = await supabase
             .from('comments')
             .delete()
             .eq('id', commentId)
-            .eq('user_id', currentUser.id);
+            .eq('user_id', currentUser.id)
+            .select();
         
         if (error) {
             console.error('删除评论失败:', error);
-            showToast('删除失败：' + (error.message || '无权限'), 'error');
+            showToast('删除失败：' + (error.message || '未知错误'), 'error');
             return;
         }
         
-        // 从本地列表移除
-        post.comments = post.comments.filter(c => c.id !== commentId);
-        renderPosts();
+        if (!data || data.length === 0) {
+            showToast('删除失败：评论不存在或无权限', 'error');
+            return;
+        }
+        
+        // 从本地列表移除（如果还存在的话）
+        const post = posts.find(p => p.id === postId);
+        if (post && post.comments) {
+            post.comments = post.comments.filter(c => c.id !== commentId);
+            renderPosts();
+        } else {
+            // 本地没有数据，重新加载
+            await loadPosts();
+        }
+        
         showToast('删除成功', 'success');
         
     } catch (error) {
