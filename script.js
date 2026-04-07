@@ -154,25 +154,25 @@ function bindEvents() {
 }
 
 function bindAuthEvents() {
-    document.getElementById('login-btn').addEventListener('click', showAuthModal);
+    document.getElementById('login-btn')?.addEventListener('click', showAuthModal);
     document.querySelectorAll('.close-btn').forEach(btn => {
         btn.addEventListener('click', function() { this.closest('.modal').style.display = 'none'; });
     });
     window.addEventListener('click', e => {
         document.querySelectorAll('.modal').forEach(m => { if (e.target === m) m.style.display = 'none'; });
     });
-    document.getElementById('submit-login').addEventListener('click', login);
-    document.getElementById('submit-register').addEventListener('click', register);
-    document.getElementById('logout-btn').addEventListener('click', logout);
-    document.getElementById('settings-btn').addEventListener('click', showSettingsModal);
-    document.getElementById('friends-btn').addEventListener('click', showFriendsModal);
+    document.getElementById('submit-login')?.addEventListener('click', login);
+    document.getElementById('submit-register')?.addEventListener('click', register);
+    document.getElementById('logout-btn')?.addEventListener('click', logout);
+    document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
+    document.getElementById('friends-btn')?.addEventListener('click', showFriendsModal);
     document.getElementById('notification-btn')?.addEventListener('click', showNotificationModal);
-    document.getElementById('save-settings').addEventListener('click', saveSettings);
-    document.getElementById('avatar-upload').addEventListener('change', handleAvatarUpload);
-    document.getElementById('add-friend-btn').addEventListener('click', addFriend);
-    document.getElementById('send-message-btn').addEventListener('click', sendMessage);
-    document.getElementById('chat-input').addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
-    document.getElementById('friend-search').addEventListener('input', function() { searchFriends(this.value); });
+    document.getElementById('save-settings')?.addEventListener('click', saveSettings);
+    document.getElementById('avatar-upload')?.addEventListener('change', handleAvatarUpload);
+    document.getElementById('add-friend-btn')?.addEventListener('click', addFriend);
+    document.getElementById('send-message-btn')?.addEventListener('click', sendMessage);
+    document.getElementById('chat-input')?.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+    document.getElementById('friend-search')?.addEventListener('input', function() { searchFriends(this.value); });
 }
 
 // ==================== 用户认证 ====================
