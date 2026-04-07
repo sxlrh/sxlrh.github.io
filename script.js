@@ -425,20 +425,11 @@ async function saveSettings() {
             return;
         }
         
-        // 同步更新所有帖子的头像和用户名
-        const { data: userPosts } = await supabase
-            .from('posts')
-            .select('id')
-            .eq('user_id', currentUser.id);
-        
-        if (userPosts && userPosts.length > 0) {
-            for (const post of userPosts) {
-                await supabase
-                    .from('posts')
-                    .update({ username: username, user_avatar: avatar })
-                    .eq('id', post.id);
-            }
-        }
+    // 同步更新所有帖子的头像和用户名（一次 update 搞定）
+    await supabase
+        .from('posts')
+        .update({ username: username, user_avatar: avatar })
+        .eq('user_id', currentUser.id);
         
         // 更新本地用户信息
         currentUser.username = username;
@@ -550,6 +541,9 @@ async function loadPosts() {
 }
 
 function renderPosts() {
+    // 首次渲染完成时隐藏骨架屏
+    hideSkeleton();
+    
     const container = document.getElementById('posts-container');
     container.innerHTML = '';
     
@@ -655,26 +649,33 @@ function createPostElement(post) {
     div.querySelector('.report-btn')?.addEventListener('click', () => reportPost(post.id));
     div.querySelector('.delete-btn')?.addEventListener('click', () => deletePost(post.id));
     div.querySelector('.comment-btn')?.addEventListener('click', () => addComment(post.id));
+    div.querySelector('.comment-input')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') addComment(post.id);
+    });
     
     return div;
 }
 
 async function incrementViewCount(postId) {
-    try {
-        const post = posts.find(p => p.id === postId);
-        if (post) {
-            const newViews = (post.views || 0) + 1;
-            await supabase
-                .from('posts')
-                .update({ views: newViews })
-                .eq('id', postId);
-            post.views = newViews;
-            // 保存浏览记录
-            saveViewedPosts();
+    // 防抖：同一帖子 1 秒内只更新一次
+    if (incrementViewCount._pending && incrementViewCount._pending[postId]) return;
+    if (!incrementViewCount._pending) incrementViewCount._pending = {};
+    incrementViewCount._pending[postId] = true;
+    
+    setTimeout(async () => {
+        delete incrementViewCount._pending[postId];
+        try {
+            await supabase.rpc('increment_view_count', { post_id_arg: postId });
+        } catch {
+            // 如果 RPC 不存在，回退到普通 update
+            const post = posts.find(p => p.id === postId);
+            if (post) {
+                await supabase.from('posts').update({ views: (post.views || 0) + 1 }).eq('id', postId);
+                post.views++;
+            }
         }
-    } catch (error) {
-        console.error('浏览量更新失败:', error);
-    }
+        saveViewedPosts();
+    }, 1000);
 }
 
 // ==================== 发布 ====================
@@ -1368,8 +1369,8 @@ window.mentionUser = function(username) {
 };
 
 // ==================== 无限滚动 ====================
-let currentPage = 0;
-const pageSize = 10;
+let currentPage = 1; // loadPosts 已加载第1页(30条)，从第2页开始
+const pageSize = 30;
 let isLoadingMore = false;
 let hasMorePosts = true;
 
@@ -1388,7 +1389,7 @@ async function loadMorePosts() {
             .from('posts')
             .select('*')
             .order('created_at', { ascending: false })
-            .range(currentPage * pageSize + pageSize, (currentPage + 1) * pageSize + pageSize);
+            .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
         
         if (error) throw error;
         
@@ -1972,6 +1973,5 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         setupInfiniteScroll();
         setupPullRefresh();
-        hideSkeleton();
     }, 1000);
 });
