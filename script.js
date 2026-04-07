@@ -488,20 +488,27 @@ async function loadPosts() {
             supabase.from('favorites').select('post_id').in('post_id', postIds),
             currentUser ? supabase.from('likes').select('post_id').eq('user_id', currentUser.id).in('post_id', postIds) : Promise.resolve({ data: [] }),
             currentUser ? supabase.from('favorites').select('post_id').eq('user_id', currentUser.id).in('post_id', postIds) : Promise.resolve({ data: [] }),
-            supabase.from('comments').select('post_id').in('post_id', postIds)
+            supabase.from('comments').select('*').in('post_id', postIds).order('created_at', { ascending: true })
         ]);
         
-        const batchTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('批量查询超时')), 6000));
+        const batchTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('批量查询超时')), 8000));
         const [likesData, favoritesData, userLikes, userFavorites, commentsRes] = await Promise.race([batchPromise, batchTimeout]).catch(() => [null, null, null, null, null]);
         
         // 统计点赞和收藏数
         const likesCount = {};
         const favoritesCount = {};
-        const commentsCount = {};
         
         if (likesData?.data) likesData.data.forEach(l => { likesCount[l.post_id] = (likesCount[l.post_id] || 0) + 1; });
         if (favoritesData?.data) favoritesData.data.forEach(f => { favoritesCount[f.post_id] = (favoritesCount[f.post_id] || 0) + 1; });
-        if (commentsRes?.data) commentsRes.data.forEach(c => { commentsCount[c.post_id] = (commentsCount[c.post_id] || 0) + 1; });
+        
+        // 按帖子分组评论
+        const commentsByPost = {};
+        if (commentsRes?.data) {
+            commentsRes.data.forEach(c => {
+                if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = [];
+                commentsByPost[c.post_id].push(c);
+            });
+        }
         
         // 用户已点赞/收藏的帖子
         const userLikedPosts = new Set((userLikes?.data || []).map(l => l.post_id));
@@ -513,7 +520,7 @@ async function loadPosts() {
             favorites: favoritesCount[post.id] || 0,
             liked: userLikedPosts.has(post.id),
             favorited: userFavoritedPosts.has(post.id),
-            comments: []
+            comments: commentsByPost[post.id] || []
         }));
         
         renderPosts();
