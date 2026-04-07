@@ -980,19 +980,27 @@ window.deleteComment = async function(postId, commentId) {
         if (!post || !post.comments) return;
         
         const comment = post.comments.find(c => c.id === commentId);
-        if (!comment || comment.user_id !== currentUser.id) {
-            showToast('无权限删除', 'error');
+        if (!comment) {
+            showToast('评论不存在', 'error');
             return;
         }
         
+        // 从 comments 表删除
+        const { error } = await supabase
+            .from('comments')
+            .delete()
+            .eq('id', commentId)
+            .eq('user_id', currentUser.id);
+        
+        if (error) {
+            console.error('删除评论失败:', error);
+            showToast('删除失败：' + (error.message || '无权限'), 'error');
+            return;
+        }
+        
+        // 从本地列表移除
         post.comments = post.comments.filter(c => c.id !== commentId);
-        
-        await supabase
-            .from('posts')
-            .update({ comments: post.comments })
-            .eq('id', postId);
-        
-        await loadPosts();
+        renderPosts();
         showToast('删除成功', 'success');
         
     } catch (error) {
