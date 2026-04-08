@@ -1555,15 +1555,43 @@ async function loadMorePosts() {
         if (data && data.length > 0) {
             currentPage++;
             
-            // 获取点赞、收藏和评论
-            const newPosts = await Promise.all(data.map(async (post) => {
-                const [likesRes, favoritesRes, userLikeRes, userFavRes, commentsRes] = await Promise.all([
-                    supabase.from('likes').select('id', { count: 'exact' }).eq('post_id', post.id),
-                    supabase.from('favorites').select('id', { count: 'exact' }).eq('post_id', post.id),
-                    currentUser ? supabase.from('likes').select('id').eq('post_id', post.id).eq('user_id', currentUser.id).single() : Promise.resolve({ data: null }),
-                    currentUser ? supabase.from('favorites').select('id').eq('post_id', post.id).eq('user_id', currentUser.id).single() : Promise.resolve({ data: null }),
-                    supabase.from('comments').select('*').eq('post_id', post.id)
-                ]);
+            // 获取点赞、收藏和评论（批量优化）
+            const postIds = data.map(p => p.id);
+            const [likesRes, favoritesRes, userLikesRes, userFavsRes, commentsRes] = await Promise.all([
+                supabase.from('likes').select('post_id', { count: 'exact' }).in('post_id', postIds),
+                supabase.from('favorites').select('post_id', { count: 'exact' }).in('post_id', postIds),
+                currentUser ? supabase.from('likes').select('post_id').in('post_id', postIds).eq('user_id', currentUser.id) : Promise.resolve({ data: [] }),
+                currentUser ? supabase.from('favorites').select('post_id').in('post_id', postIds).eq('user_id', currentUser.id) : Promise.resolve({ data: [] }),
+                supabase.from('comments').select('*').in('post_id', postIds)
+            ]);
+
+            const userLikeSet = new Set((userLikesRes.data || []).map(l => l.post_id));
+            const userFavSet = new Set((userFavsRes.data || []).map(f => f.post_id));
+            const likeCounts = {};
+            const favCounts = {};
+            (likesRes.data || []).forEach(l => { likeCounts[l.post_id] = (likeCounts[l.post_id] || 0) + 1; });
+            (favoritesRes.data || []).forEach(f => { favCounts[f.post_id] = (favCounts[f.post_id] || 0) + 1; });
+
+            // 分组评论
+            const commentsByPost = {};
+            (commentsRes.data || []).forEach(c => {
+                if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = { top: [], replies: {} };
+                if (c.parent_id) {
+                    if (!commentsByPost[c.post_id].replies[c.parent_id]) commentsByPost[c.post_id].replies[c.parent_id] = [];
+                    commentsByPost[c.post_id].replies[c.parent_id].push(c);
+                } else {
+                    commentsByPost[c.post_id].top.push(c);
+                }
+            });
+
+            const newPosts = data.map(post => ({
+                ...post,
+                likes: likeCounts[post.id] || 0,
+                liked: userLikeSet.has(post.id),
+                favorites: favCounts[post.id] || 0,
+                favorited: userFavSet.has(post.id),
+                comments: commentsByPost[post.id] || { top: [], replies: {} }
+            }));
                 
                 // 分组评论为 { top, replies } 结构
                 const topComments = [];
@@ -1871,6 +1899,7 @@ window.closeUserProfile = function() {
 };
 
 // 显示用户主页的标签页
+let _profileFavDebounce = null;
 window.showProfileTab = function(tab, el) {
     document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
     if (el) el.classList.add('active');
@@ -1887,8 +1916,13 @@ window.showProfileTab = function(tab, el) {
 };
 
 // 加载用户收藏
+let _favLoadingUserId = null;
 async function loadUserFavorites(userId) {
     const container = document.getElementById('profile-favorites');
+    // 防抖：如果已经在加载同一个人，直接跳过
+    if (_favLoadingUserId === userId) return;
+    _favLoadingUserId = userId;
+    
     container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载中...</p>';
     
     try {
@@ -1896,6 +1930,9 @@ async function loadUserFavorites(userId) {
             .from('favorites')
             .select('post_id, posts(*)')
             .eq('user_id', userId);
+        
+        // 如果在等待期间切换了用户，丢弃结果
+        if (_favLoadingUserId !== userId) return;
         
         if (!favorites || favorites.length === 0) {
             container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无收藏</p>';
@@ -1921,7 +1958,10 @@ async function loadUserFavorites(userId) {
         });
     } catch (error) {
         console.error('加载收藏失败:', error);
-        container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
+        if (_favLoadingUserId === userId)
+            container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载失败</p>';
+    } finally {
+        if (_favLoadingUserId === userId) _favLoadingUserId = null;
     }
 }
 
