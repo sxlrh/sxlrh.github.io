@@ -610,7 +610,7 @@ function createPostElement(post) {
                     ${isReplyOwner ? `<button onclick="event.stopPropagation(); deleteComment('${safeAttr(post.id)}', '${safeAttr(r.id)}')" style="background:none;border:none;color:#999;font-size:0.7rem;cursor:pointer;margin-left:5px;">删除</button>` : ''}
                 </div>`;
             });
-            commentsHtml += `<li class="comment-item" onclick="openUserProfile('${c.user_id}')">
+            commentsHtml += `<li class="comment-item" onclick="openUserProfile('${safeAttr(c.user_id)}')">
                 <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                     <img src="${c.user_avatar}" style="width:20px;height:20px;border-radius:50%;">
                     <span style="font-weight:600;font-size:0.8rem;color:#667eea;">${c.username}</span>
@@ -1180,7 +1180,7 @@ async function loadFriends() {
                         <div class="friend-item-name">${friend.username}</div>
                     </div>
                     <div class="friend-item-actions">
-                        <button class="upload-btn" onclick="removeFriend('${friend.id}')" style="padding:5px 10px;">删除</button>
+                        <button class="upload-btn" onclick="removeFriend('${safeAttr(friend.id)}')" style="padding:5px 10px;">删除</button>
                     </div>`;
                 container.appendChild(div);
             }
@@ -1304,7 +1304,7 @@ async function searchFriends(keyword) {
                     <div style="font-size:0.8rem;color:#999;">ID: ${friend.id}</div>
                 </div>
                 <div class="friend-item-actions">
-                    <button class="upload-btn" onclick="removeFriend('${friend.id}')" style="padding:5px 10px;">删除</button>
+                    <button class="upload-btn" onclick="removeFriend('${safeAttr(friend.id)}')" style="padding:5px 10px;">删除</button>
                 </div>`;
             container.appendChild(div);
         });
@@ -1369,15 +1369,162 @@ function parseContent(text) {
 }
 
 // 搜索话题
-window.searchTopic = function(topic) {
-    showToast(`搜索话题: #${topic}`, 'info');
-    // TODO: 实现话题搜索
+window.searchTopic = async function(topic) {
+    const container = document.getElementById('posts-container');
+    container.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> 搜索中...</div>';
+    window._searchState = { type: 'topic', value: topic };
+
+    try {
+        const { data } = await supabase
+            .from('posts').select('*')
+            .ilike('content', `%#${topic}%`)
+            .order('created_at', { ascending: false })
+            .limit(30);
+
+        if (!data || data.length === 0) {
+            container.innerHTML = `
+                <div class="no-posts">
+                    <p style="font-size:3rem;">🔍</p>
+                    <p>没有找到 #${escapeHtml(topic)} 相关的帖子</p>
+                    <button onclick="clearSearch()" style="margin-top:15px;padding:8px 20px;background:#667eea;color:white;border:none;border-radius:20px;cursor:pointer;">返回全部</button>
+                </div>`;
+            return;
+        }
+
+        // 批量查询点赞、收藏、评论
+        const postIds = data.map(p => p.id);
+        const [likesRes, favoritesRes, userLikesRes, userFavsRes, commentsRes] = await Promise.all([
+            supabase.from('likes').select('post_id', { count: 'exact' }).in('post_id', postIds),
+            supabase.from('favorites').select('post_id', { count: 'exact' }).in('post_id', postIds),
+            currentUser ? supabase.from('likes').select('post_id').in('post_id', postIds).eq('user_id', currentUser.id) : Promise.resolve({ data: [] }),
+            currentUser ? supabase.from('favorites').select('post_id').in('post_id', postIds).eq('user_id', currentUser.id) : Promise.resolve({ data: [] }),
+            supabase.from('comments').select('*').in('post_id', postIds)
+        ]);
+
+        const userLikeSet = new Set((userLikesRes.data || []).map(l => l.post_id));
+        const userFavSet = new Set((userFavsRes.data || []).map(f => f.post_id));
+        const likeCounts = {};
+        const favCounts = {};
+        (likesRes.data || []).forEach(l => { likeCounts[l.post_id] = (likeCounts[l.post_id] || 0) + 1; });
+        (favoritesRes.data || []).forEach(f => { favCounts[f.post_id] = (favCounts[f.post_id] || 0) + 1; });
+
+        // 分组评论
+        const commentsByPost = {};
+        (commentsRes.data || []).forEach(c => {
+            if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = { top: [], replies: {} };
+            if (c.parent_id) {
+                if (!commentsByPost[c.post_id].replies[c.parent_id]) commentsByPost[c.post_id].replies[c.parent_id] = [];
+                commentsByPost[c.post_id].replies[c.parent_id].push(c);
+            } else {
+                commentsByPost[c.post_id].top.push(c);
+            }
+        });
+
+        container.innerHTML = `
+            <div style="text-align:center;padding:10px 0 5px;color:var(--text-secondary);font-size:0.85rem;">
+                🔍 话题 <strong>#${escapeHtml(topic)}</strong> 的结果 (${data.length} 条)
+                <button onclick="clearSearch()" style="margin-left:10px;padding:3px 12px;background:#eee;color:#333;border:none;border-radius:12px;cursor:pointer;font-size:0.8rem;">返回</button>
+            </div>`;
+
+        data.forEach(post => {
+            const enriched = {
+                ...post,
+                likes: likeCounts[post.id] || 0,
+                liked: userLikeSet.has(post.id),
+                favorites: favCounts[post.id] || 0,
+                favorited: userFavSet.has(post.id),
+                comments: commentsByPost[post.id] || { top: [], replies: {} }
+            };
+            container.appendChild(createPostElement(enriched));
+        });
+
+    } catch (error) {
+        console.error('话题搜索失败:', error);
+        container.innerHTML = '<div class="no-posts"><p>搜索失败，请重试</p></div>';
+    }
 };
 
 // 提及用户
-window.mentionUser = function(username) {
-    showToast(`提及用户: @${username}`, 'info');
-    // TODO: 实现用户提及
+window.mentionUser = async function(username) {
+    const container = document.getElementById('posts-container');
+    container.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> 搜索中...</div>';
+    window._searchState = { type: 'mention', value: username };
+
+    try {
+        const { data } = await supabase
+            .from('posts').select('*')
+            .ilike('content', `%@${username}%`)
+            .order('created_at', { ascending: false })
+            .limit(30);
+
+        if (!data || data.length === 0) {
+            container.innerHTML = `
+                <div class="no-posts">
+                    <p style="font-size:3rem;">🔍</p>
+                    <p>没有找到 @${escapeHtml(username)} 相关的帖子</p>
+                    <button onclick="clearSearch()" style="margin-top:15px;padding:8px 20px;background:#667eea;color:white;border:none;border-radius:20px;cursor:pointer;">返回全部</button>
+                </div>`;
+            return;
+        }
+
+        // 批量查询点赞、收藏、评论
+        const postIds = data.map(p => p.id);
+        const [likesRes, favoritesRes, userLikesRes, userFavsRes, commentsRes] = await Promise.all([
+            supabase.from('likes').select('post_id', { count: 'exact' }).in('post_id', postIds),
+            supabase.from('favorites').select('post_id', { count: 'exact' }).in('post_id', postIds),
+            currentUser ? supabase.from('likes').select('post_id').in('post_id', postIds).eq('user_id', currentUser.id) : Promise.resolve({ data: [] }),
+            currentUser ? supabase.from('favorites').select('post_id').in('post_id', postIds).eq('user_id', currentUser.id) : Promise.resolve({ data: [] }),
+            supabase.from('comments').select('*').in('post_id', postIds)
+        ]);
+
+        const userLikeSet = new Set((userLikesRes.data || []).map(l => l.post_id));
+        const userFavSet = new Set((userFavsRes.data || []).map(f => f.post_id));
+        const likeCounts = {};
+        const favCounts = {};
+        (likesRes.data || []).forEach(l => { likeCounts[l.post_id] = (likeCounts[l.post_id] || 0) + 1; });
+        (favoritesRes.data || []).forEach(f => { favCounts[f.post_id] = (favCounts[f.post_id] || 0) + 1; });
+
+        const commentsByPost = {};
+        (commentsRes.data || []).forEach(c => {
+            if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = { top: [], replies: {} };
+            if (c.parent_id) {
+                if (!commentsByPost[c.post_id].replies[c.parent_id]) commentsByPost[c.post_id].replies[c.parent_id] = [];
+                commentsByPost[c.post_id].replies[c.parent_id].push(c);
+            } else {
+                commentsByPost[c.post_id].top.push(c);
+            }
+        });
+
+        container.innerHTML = `
+            <div style="text-align:center;padding:10px 0 5px;color:var(--text-secondary);font-size:0.85rem;">
+                🔍 提及 @${escapeHtml(username)} 的结果 (${data.length} 条)
+                <button onclick="clearSearch()" style="margin-left:10px;padding:3px 12px;background:#eee;color:#333;border:none;border-radius:12px;cursor:pointer;font-size:0.8rem;">返回</button>
+            </div>`;
+
+        data.forEach(post => {
+            const enriched = {
+                ...post,
+                likes: likeCounts[post.id] || 0,
+                liked: userLikeSet.has(post.id),
+                favorites: favCounts[post.id] || 0,
+                favorited: userFavSet.has(post.id),
+                comments: commentsByPost[post.id] || { top: [], replies: {} }
+            };
+            container.appendChild(createPostElement(enriched));
+        });
+
+    } catch (error) {
+        console.error('用户提及搜索失败:', error);
+        container.innerHTML = '<div class="no-posts"><p>搜索失败，请重试</p></div>';
+    }
+};
+
+// 返回全部帖子（清除搜索状态）
+window.clearSearch = async function() {
+    window._searchState = null;
+    const container = document.getElementById('posts-container');
+    container.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+    await loadPosts();
 };
 
 // ==================== 无限滚动 ====================
@@ -1673,7 +1820,7 @@ window.openUserProfile = async function(userId) {
             
             const isFollowing = !!existingFollow;
             actionsDiv.innerHTML = `
-                <button onclick="toggleFollowUser('${userId}')" 
+                <button onclick="toggleFollowUser('${safeAttr(userId)}')" 
                         style="padding:8px 24px;background:${isFollowing ? '#999' : '#667eea'};color:white;border:none;border-radius:20px;cursor:pointer;font-size:0.9rem;">
                     ${isFollowing ? '已关注' : '+ 关注'}
                 </button>
@@ -1839,65 +1986,55 @@ async function loadNotifications() {
     container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">加载中...</p>';
     
     try {
-        // 获取点赞通知
+        // 先获取当前用户的帖子 ID（用于过滤）
+        const { data: myPosts } = await supabase
+            .from('posts').select('id')
+            .eq('user_id', currentUser.id);
+        
+        const myPostIds = (myPosts || []).map(p => p.id);
+        
+        // 并行获取点赞、评论、关注
         const [likesRes, commentsRes, followsRes] = await Promise.all([
-            supabase.from('likes').select('*, posts(*), users!likes_user_id_fkey(*)').eq('posts.user_id', currentUser.id).order('created_at', { ascending: false }).limit(20),
-            supabase.from('comments').select('*, posts(*), users!comments_user_id_fkey(*)').eq('posts.user_id', currentUser.id).order('created_at', { ascending: false }).limit(20),
+            myPostIds.length > 0
+                ? supabase.from('likes').select('*, users(*)').in('post_id', myPostIds).order('created_at', { ascending: false }).limit(20)
+                : Promise.resolve({ data: [] }),
+            myPostIds.length > 0
+                ? supabase.from('comments').select('*, posts(*), users(*)').in('post_id', myPostIds).order('created_at', { ascending: false }).limit(20)
+                : Promise.resolve({ data: [] }),
             supabase.from('follows').select('*').eq('following_id', currentUser.id).order('created_at', { ascending: false }).limit(20)
         ]);
         
         notifications = [];
         
-        // 添加点赞通知
-        if (likesRes.data) {
-            likesRes.data.forEach(like => {
-                if (like.posts && like.users) {
-                    notifications.push({
-                        type: 'like',
-                        user: like.users,
-                        post: like.posts,
-                        time: like.created_at
-                    });
-                }
-            });
-        }
+        // 点赞通知
+        (likesRes.data || []).forEach(like => {
+            if (like.users && like.users.id !== currentUser.id) {
+                const post = myPosts.find(p => p.id === like.post_id);
+                notifications.push({ type: 'like', user: like.users, post: { id: like.post_id, content: post ? post.content : '' }, time: like.created_at });
+            }
+        });
         
-        // 添加评论通知
-        if (commentsRes.data) {
-            commentsRes.data.forEach(comment => {
-                if (comment.posts && comment.users && comment.users.id !== currentUser.id) {
-                    notifications.push({
-                        type: 'comment',
-                        user: comment.users,
-                        post: comment.posts,
-                        content: comment.content,
-                        time: comment.created_at
-                    });
-                }
-            });
-        }
+        // 评论通知
+        (commentsRes.data || []).forEach(comment => {
+            if (comment.users && comment.users.id !== currentUser.id) {
+                notifications.push({ type: 'comment', user: comment.users, post: comment.posts, content: comment.content, time: comment.created_at });
+            }
+        });
         
-        // 添加关注通知
-        if (followsRes.data) {
+        // 关注通知
+        if (followsRes.data && followsRes.data.length > 0) {
             const userIds = followsRes.data.map(f => f.follower_id);
-            if (userIds.length > 0) {
-                const { data: followUsers } = await supabase.from('users').select('*').in('id', userIds);
-                if (followUsers) {
-                    followUsers.forEach((user, i) => {
-                        notifications.push({
-                            type: 'follow',
-                            user: user,
-                            time: followsRes.data[i].created_at
-                        });
-                    });
-                }
+            const { data: followUsers } = await supabase.from('users').select('*').in('id', userIds);
+            if (followUsers) {
+                followsRes.data.forEach((follow, i) => {
+                    const user = followUsers.find(u => u.id === follow.follower_id);
+                    if (user) notifications.push({ type: 'follow', user, time: follow.created_at });
+                });
             }
         }
         
-        // 按时间排序
+        // 按时间排序并渲染
         notifications.sort((a, b) => new Date(b.time) - new Date(a.time));
-        
-        // 渲染通知
         renderNotifications();
         
     } catch (error) {
@@ -1958,19 +2095,39 @@ function scrollToPost(postId) {
     if (postEl) postEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function checkNotificationCount() {
+async function checkNotificationCount() {
     if (!currentUser) return;
     
-    supabase.from('likes').select('id', { count: 'exact' }).eq('posts.user_id', currentUser.id)
-        .then(({ count }) => {
-            if (count > 0) {
-                const badge = document.getElementById('notification-badge');
-                if (badge) {
-                    badge.textContent = count > 9 ? '9+' : count;
-                    badge.style.display = 'block';
-                }
+    try {
+        const { data: myPosts } = await supabase
+            .from('posts').select('id').eq('user_id', currentUser.id);
+        const myPostIds = (myPosts || []).map(p => p.id);
+        
+        if (myPostIds.length === 0) {
+            const badge = document.getElementById('notification-badge');
+            if (badge) badge.style.display = 'none';
+            return;
+        }
+        
+        const [{ count: likeCount }, { count: commentCount }, { count: followCount }] = await Promise.all([
+            supabase.from('likes').select('id', { count: 'exact', head: true }).in('post_id', myPostIds),
+            supabase.from('comments').select('id', { count: 'exact', head: true }).in('post_id', myPostIds).neq('user_id', currentUser.id),
+            supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', currentUser.id)
+        ]);
+        
+        const total = (likeCount || 0) + (commentCount || 0) + (followCount || 0);
+        const badge = document.getElementById('notification-badge');
+        if (badge) {
+            if (total > 0) {
+                badge.textContent = total > 9 ? '9+' : total;
+                badge.style.display = 'block';
+            } else {
+                badge.style.display = 'none';
             }
-        });
+        }
+    } catch (e) {
+        console.error('检查通知数失败:', e);
+    }
 }
 
 // ==================== 启动 ====================
