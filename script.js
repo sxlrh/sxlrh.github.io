@@ -413,6 +413,17 @@ async function saveSettings() {
         return;
     }
     
+    // 安全校验：头像 URL 必须为本地文件或受信任来源
+    const allowedAvatar = avatar.startsWith('data:') ||
+                          avatar.startsWith('https://ui-avatars.com/') ||
+                          avatar.startsWith('https://tgadmkpyufqnnciowydo.supabase.co/storage/');
+    if (!allowedAvatar) {
+        showToast('头像来源不受信任，请上传本地图片', 'error');
+        return;
+    }
+    
+    showLoading(true);
+    
     showLoading(true);
     
     try {
@@ -763,6 +774,13 @@ async function handlePost() {
     
     if (!text && !currentImage && !currentVideo && !currentVoice) {
         showToast('请输入内容', 'error');
+        return;
+    }
+    
+    // 安全校验：内容长度限制（防 DoS + 数据库保护）
+    const MAX_CONTENT_LENGTH = 5000;
+    if (text.length > MAX_CONTENT_LENGTH) {
+        showToast(`内容不能超过 ${MAX_CONTENT_LENGTH} 字`, 'error');
         return;
     }
     
