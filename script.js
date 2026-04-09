@@ -1638,28 +1638,6 @@ async function loadMorePosts() {
                 favorited: userFavSet.has(post.id),
                 comments: commentsByPost[post.id] || { top: [], replies: {} }
             }));
-                
-                // 分组评论为 { top, replies } 结构
-                const topComments = [];
-                const repliesMap = {};
-                (commentsRes.data || []).forEach(c => {
-                    if (c.parent_id) {
-                        if (!repliesMap[c.parent_id]) repliesMap[c.parent_id] = [];
-                        repliesMap[c.parent_id].push(c);
-                    } else {
-                        topComments.push(c);
-                    }
-                });
-                
-                return {
-                    ...post,
-                    likes: likesRes.count || 0,
-                    liked: !!userLikeRes.data,
-                    favorites: favoritesRes.count || 0,
-                    favorited: !!userFavRes.data,
-                    comments: { top: topComments, replies: repliesMap }
-                };
-            }));
             
             posts = [...posts, ...newPosts];
             
