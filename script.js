@@ -71,6 +71,7 @@ async function init() {
         updateUserInfo();
         loadViewedPosts();
         checkNotificationCount();
+        subscribeToNotifications(); // 启动实时通知订阅
         
         // 绑定事件
         bindEvents();
@@ -261,6 +262,9 @@ async function login() {
         currentUser = data;
         localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
         updateUserInfo();
+        loadViewedPosts();
+        checkNotificationCount();
+        subscribeToNotifications(); // 启动实时通知
         hideAuthModal();
         showToast('登录成功', 'success');
         
@@ -332,6 +336,9 @@ async function register() {
         localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
         
         updateUserInfo();
+        loadViewedPosts();
+        checkNotificationCount();
+        subscribeToNotifications(); // 启动实时通知
         hideAuthModal();
         showToast('注册成功！', 'success');
         
@@ -347,6 +354,7 @@ function logout() {
     if (!confirm('确定要退出登录吗？')) return;
     currentUser = null;
     localStorage.removeItem('treeholeUser');
+    unsubscribeFromNotifications(); // 取消实时通知订阅
     updateUserInfo();
     showToast('已退出登录', 'success');
 }
@@ -2034,9 +2042,26 @@ window.toggleFollowUser = async function(userId) {
 let notifications = [];
 let lastNotificationCount = 0;
 
+// 获取最后查看通知的时间
+function getLastReadTime() {
+    if (!currentUser) return new Date(0);
+    const stored = localStorage.getItem(`notifications_read_${currentUser.id}`);
+    return stored ? new Date(stored) : new Date(0);
+}
+
+// 设置最后查看通知的时间
+function setLastReadTime() {
+    if (!currentUser) return;
+    localStorage.setItem(`notifications_read_${currentUser.id}`, new Date().toISOString());
+}
+
 window.showNotificationModal = function() {
     document.getElementById('notification-modal').style.display = 'block';
     loadNotifications();
+    // 标记已读并隐藏红点
+    setLastReadTime();
+    const badge = document.getElementById('notification-badge');
+    if (badge) badge.style.display = 'none';
 };
 
 window.closeNotificationModal = function() {
@@ -2173,10 +2198,13 @@ async function checkNotificationCount() {
             return;
         }
         
+        // 只查询上次查看时间之后的通知
+        const lastRead = getLastReadTime().toISOString();
+        
         const [{ count: likeCount }, { count: commentCount }, { count: followCount }] = await Promise.all([
-            supabase.from('likes').select('id', { count: 'exact', head: true }).in('post_id', myPostIds),
-            supabase.from('comments').select('id', { count: 'exact', head: true }).in('post_id', myPostIds).neq('user_id', currentUser.id),
-            supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', currentUser.id)
+            supabase.from('likes').select('id', { count: 'exact', head: true }).in('post_id', myPostIds).gt('created_at', lastRead),
+            supabase.from('comments').select('id', { count: 'exact', head: true }).in('post_id', myPostIds).neq('user_id', currentUser.id).gt('created_at', lastRead),
+            supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', currentUser.id).gt('created_at', lastRead)
         ]);
         
         const total = (likeCount || 0) + (commentCount || 0) + (followCount || 0);
@@ -2194,6 +2222,70 @@ async function checkNotificationCount() {
     }
 }
 
+// ==================== 实时通知订阅 ====================
+let notificationSubscription = null;
+
+function subscribeToNotifications() {
+    if (!currentUser || notificationSubscription) return;
+    
+    // 获取我的帖子ID列表
+    supabase.from('posts').select('id').eq('user_id', currentUser.id).then(({ data: myPosts }) => {
+        const myPostIds = (myPosts || []).map(p => p.id);
+        if (myPostIds.length === 0) return;
+        
+        // 订阅评论表 - 当有人评论我的帖子时实时通知
+        notificationSubscription = supabase
+            .channel('notifications')
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'comments',
+                filter: `post_id=in.(${myPostIds.join(',')})`
+            }, (payload) => {
+                // 过滤掉自己的评论
+                if (payload.new.user_id !== currentUser.id) {
+                    // 显示浏览器通知（如果用户允许）
+                    if ('Notification' in window && Notification.permission === 'granted') {
+                        new Notification('心灵树洞', {
+                            body: '有人评论了你的帖子',
+                            icon: '🌳'
+                        });
+                    }
+                    // 更新红点
+                    checkNotificationCount();
+                }
+            })
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'likes',
+                filter: `post_id=in.(${myPostIds.join(',')})`
+            }, (payload) => {
+                if (payload.new.user_id !== currentUser.id) {
+                    checkNotificationCount();
+                }
+            })
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'follows',
+                filter: `following_id=eq.${currentUser.id}`
+            }, (payload) => {
+                checkNotificationCount();
+            })
+            .subscribe();
+        
+        subscriptions.push(notificationSubscription);
+    });
+}
+
+function unsubscribeFromNotifications() {
+    if (notificationSubscription) {
+        supabase.removeChannel(notificationSubscription);
+        notificationSubscription = null;
+    }
+}
+
 // ==================== 启动 ====================
 window.addEventListener('DOMContentLoaded', () => {
     init();
@@ -2203,4 +2295,9 @@ window.addEventListener('DOMContentLoaded', () => {
         setupInfiniteScroll();
         setupPullRefresh();
     }, 1000);
+    
+    // 请求浏览器通知权限
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
 });
