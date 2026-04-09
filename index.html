@@ -72,12 +72,12 @@
                 <!-- 登录表单 -->
                 <div id="login-form" class="auth-form">
                     <div class="form-group">
-                        <label>用户名</label>
-                        <input type="text" id="login-username" placeholder="请输入用户名">
+                        <label for="login-username">用户名</label>
+                        <input type="text" id="login-username" name="login-username" placeholder="请输入用户名">
                     </div>
                     <div class="form-group">
-                        <label>密码</label>
-                        <input type="password" id="login-password" placeholder="请输入密码">
+                        <label for="login-password">密码</label>
+                        <input type="password" id="login-password" name="login-password" placeholder="请输入密码">
                     </div>
                     <button id="submit-login" class="auth-btn">登录</button>
                 </div>
@@ -85,16 +85,16 @@
                 <!-- 注册表单 -->
                 <div id="register-form" class="auth-form" style="display: none;">
                     <div class="form-group">
-                        <label>用户名</label>
-                        <input type="text" id="register-username" placeholder="请输入用户名（2-20字符）">
+                        <label for="register-username">用户名</label>
+                        <input type="text" id="register-username" name="register-username" placeholder="请输入用户名（2-20字符）">
                     </div>
                     <div class="form-group">
-                        <label>密码</label>
-                        <input type="password" id="register-password" placeholder="请输入密码（至少6位）">
+                        <label for="register-password">密码</label>
+                        <input type="password" id="register-password" name="register-password" placeholder="请输入密码（至少6位）">
                     </div>
                     <div class="form-group">
-                        <label>确认密码</label>
-                        <input type="password" id="register-confirm-password" placeholder="请确认密码">
+                        <label for="register-confirm-password">确认密码</label>
+                        <input type="password" id="register-confirm-password" name="register-confirm-password" placeholder="请确认密码">
                     </div>
                     <button id="submit-register" class="auth-btn">注册</button>
                 </div>
@@ -134,12 +134,12 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>用户名</label>
-                    <input type="text" id="settings-username" placeholder="请输入用户名">
+                    <label for="settings-username">用户名</label>
+                    <input type="text" id="settings-username" name="settings-username" placeholder="请输入用户名">
                 </div>
                 <div class="form-group">
-                    <label>用户ID</label>
-                    <input type="text" id="settings-user-id" placeholder="用户ID" readonly>
+                    <label for="settings-user-id">用户ID</label>
+                    <input type="text" id="settings-user-id" name="settings-user-id" placeholder="用户ID" readonly>
                 </div>
                 <button id="save-settings" class="auth-btn">保存设置</button>
             </div>
@@ -204,7 +204,7 @@
                 <!-- 好友列表 -->
                 <div id="friends-list" class="friends-content">
                     <div class="form-group" style="margin-bottom: 15px;">
-                        <input type="text" id="friend-search" placeholder="搜索好友...">
+                        <input type="text" id="friend-search" name="friend-search" placeholder="搜索好友...">
                     </div>
                     <div id="friends-container"></div>
                 </div>
@@ -212,8 +212,8 @@
                 <!-- 添加好友 -->
                 <div id="add-friends" class="friends-content" style="display: none;">
                     <div class="form-group">
-                        <label>用户名或用户ID</label>
-                        <input type="text" id="add-friend-username" placeholder="请输入好友用户名或用户ID">
+                        <label for="add-friend-username">用户名或用户ID</label>
+                        <input type="text" id="add-friend-username" name="add-friend-username" placeholder="请输入好友用户名或用户ID">
                     </div>
                     <button id="add-friend-btn" class="auth-btn">添加好友</button>
                 </div>
@@ -236,23 +236,23 @@
                         <h2>分享你的故事</h2>
                     </div>
                     <div class="post-content">
-                        <textarea id="post-text" placeholder="在这里写下你的想法...&#10;&#10;💡 小提示：&#10;• 用 #话题 创建话题标签&#10;• 用 @用户名 提及好友"></textarea>
+                        <textarea id="post-text" name="post-text" placeholder="在这里写下你的想法...&#10;&#10;💡 小提示：&#10;• 用 #话题 创建话题标签&#10;• 用 @用户名 提及好友"></textarea>
                         <div class="post-actions">
-                            <button class="emoji-picker-btn" id="emoji-btn">😊</button>
+                            <button class="emoji-picker-btn" id="emoji-btn" type="button">😊</button>
                             <div class="file-upload">
                                 <label for="image-upload" class="upload-btn">
                                     <i class="fas fa-image"></i> 图片
                                 </label>
-                                <input type="file" id="image-upload" accept="image/*" style="display: none;">
+                                <input type="file" id="image-upload" name="image-upload" accept="image/*" style="display: none;">
                             </div>
                             <div class="file-upload">
                                 <label for="video-upload" class="upload-btn">
                                     <i class="fas fa-video"></i> 视频
                                 </label>
-                                <input type="file" id="video-upload" accept="video/*" style="display: none;">
+                                <input type="file" id="video-upload" name="video-upload" accept="video/*" style="display: none;">
                             </div>
                             <div class="file-upload">
-                                <button id="voice-record" class="upload-btn">
+                                <button id="voice-record" class="upload-btn" type="button">
                                     <i class="fas fa-microphone"></i> 语音
                                 </button>
                             </div>
