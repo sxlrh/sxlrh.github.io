@@ -717,13 +717,12 @@ async function incrementViewCount(postId) {
     
     setTimeout(async () => {
         delete incrementViewCount._pending[postId];
-        try {
-            await supabase.rpc('increment_view_count', { post_id_arg: postId });
-        } catch {
-            // 如果 RPC 不存在，回退到普通 update
-            const post = posts.find(p => p.id === postId);
-            if (post) {
-                await supabase.from('posts').update({ views: (post.views || 0) + 1 }).eq('id', postId);
+        
+        // 先尝试普通 update（RPC 可能不存在）
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+            const { error } = await supabase.from('posts').update({ views: (post.views || 0) + 1 }).eq('id', postId);
+            if (!error) {
                 post.views++;
             }
         }
