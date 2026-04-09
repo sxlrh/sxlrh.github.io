@@ -93,14 +93,39 @@ async function init() {
 
 // ==================== 实时订阅（防抖） ====================
 let realtimeDebounce = null;
+let _lastRefreshTime = 0;
 function setupRealtimeSubscription() {
     try {
         const postsChannel = supabase
             .channel('posts-changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, (payload) => {
+                // 忽略浏览量更新（views字段变更）触发的刷新
+                if (payload.eventType === 'UPDATE' && payload.old && payload.new) {
+                    const oldViews = payload.old.views;
+                    const newViews = payload.new.views;
+                    // 如果只有views变化，其他字段没变，则忽略
+                    const onlyViewsChanged = Object.keys(payload.new).every(key => {
+                        if (key === 'views') return true;
+                        return payload.old[key] === payload.new[key];
+                    });
+                    if (onlyViewsChanged) {
+                        console.log('忽略浏览量更新触发的刷新');
+                        return;
+                    }
+                }
+                
                 // 防抖：3秒内多次变更只刷新一次
                 if (realtimeDebounce) clearTimeout(realtimeDebounce);
-                realtimeDebounce = setTimeout(() => loadPosts(), 3000);
+                realtimeDebounce = setTimeout(() => {
+                    // 额外防护：如果5秒内刚刷新过，跳过
+                    const now = Date.now();
+                    if (now - _lastRefreshTime < 5000) {
+                        console.log('刷新太频繁，跳过');
+                        return;
+                    }
+                    _lastRefreshTime = now;
+                    loadPosts();
+                }, 3000);
             })
             .subscribe();
         
@@ -471,6 +496,9 @@ async function saveSettings() {
 // ==================== 帖子 ====================
 async function loadPosts() {
     try {
+        // 记录本次刷新时间，防止实时订阅循环
+        _lastRefreshTime = Date.now();
+        
         const timeoutPromise = new Promise((_, reject) => 
             setTimeout(() => reject(new Error('请求超时')), 8000)
         );
