@@ -38,6 +38,7 @@
     --text-muted: #888888;
     --border-color: var(--border-color-dark);
     --shadow-color: var(--shadow-color-dark);
+    --accent-gradient: linear-gradient(135deg, #5a6fd6 0%, #6b4fa0 100%);
 }
 
 /* ==================== 全局样式 ==================== */
@@ -747,34 +748,10 @@ main {
 }
 
 /* ==================== 第三方登录 ==================== */
+/* 已禁用 - 功能未实现 */
 .third-party-login {
-    border-top: 1px solid var(--border-color);
-    padding-top: 20px;
-    margin-top: 20px;
+    display: none;
 }
-
-.third-party-login p {
-    text-align: center;
-    margin-bottom: 15px;
-    color: var(--text-muted);
-}
-
-.login-buttons {
-    display: flex;
-    gap: 10px;
-}
-
-.third-party-btn {
-    flex: 1;
-    padding: 10px;
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
     font-size: 0.9rem;
 }
 
