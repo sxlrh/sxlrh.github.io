@@ -53,18 +53,19 @@ async function init() {
                 currentUser = JSON.parse(savedUser);
                 // 验证用户（带超时，失败不影响页面加载）
                 const userPromise = supabase.from('users').select('*').eq('id', currentUser.id).single();
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('超时')), 1500));
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('超时')), 5000));
                 
-                const { data } = await Promise.race([userPromise, timeoutPromise]).catch(() => ({ data: null }));
-                if (!data) {
-                    currentUser = null;
-                    localStorage.removeItem('treeholeUser');
-                } else {
+                const { data, error } = await Promise.race([userPromise, timeoutPromise]).catch(() => ({ data: null, error: null }));
+                if (!data && !error) {
+                    // 超时或查询失败，保留本地存储的登录状态，不清除
+                    console.log('用户验证超时，但保留本地登录状态');
+                } else if (data) {
                     currentUser = data;
                 }
+                // 验证失败时保留 currentUser（已从 localStorage 恢复），不清除
             } catch (e) {
                 console.error('用户验证失败:', e);
-                currentUser = null;
+                // 验证失败时保留本地登录状态，不清除
             }
         }
         
