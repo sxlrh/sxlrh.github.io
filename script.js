@@ -46,14 +46,14 @@ function saveViewedPosts() {
 // ==================== 初始化 ====================
 async function init() {
     try {
-        // 检查本地存储的用户
+        // 并行执行所有初始化操作（不阻塞）
         const savedUser = localStorage.getItem('treeholeUser');
         if (savedUser) {
             try {
                 currentUser = JSON.parse(savedUser);
                 // 验证用户（带超时，失败不影响页面加载）
                 const userPromise = supabase.from('users').select('*').eq('id', currentUser.id).single();
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('超时')), 3000));
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('超时')), 1500));
                 
                 const { data } = await Promise.race([userPromise, timeoutPromise]).catch(() => ({ data: null }));
                 if (!data) {
@@ -68,16 +68,21 @@ async function init() {
             }
         }
         
+        // 立即更新 UI（不等待）
         updateUserInfo();
-        loadViewedPosts();
-        checkNotificationCount();
-        subscribeToNotifications(); // 启动实时通知订阅
+        
+        // 后台执行的操作（不阻塞页面渲染）
+        setTimeout(() => {
+            loadViewedPosts();
+            checkNotificationCount();
+            subscribeToNotifications();
+        }, 100);
         
         // 绑定事件
         bindEvents();
         bindAuthEvents();
         
-        // 加载帖子
+        // 加载帖子（主要操作）
         await loadPosts();
         
         // 启动实时订阅
@@ -507,15 +512,16 @@ async function loadPosts() {
         // 记录本次刷新时间，防止实时订阅循环
         _lastRefreshTime = Date.now();
         
+        // 优化：缩短超时时间，加快错误检测
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('请求超时')), 8000)
+            setTimeout(() => reject(new Error('请求超时')), 5000)
         );
         
         const postsPromise = supabase
             .from('posts')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(30);
+            .limit(20);  // 优化：减少初始加载数量，从30减少到20
         
         const { data } = await Promise.race([
             postsPromise,
@@ -539,7 +545,7 @@ async function loadPosts() {
             supabase.from('comments').select('*').in('post_id', postIds).order('created_at', { ascending: true })
         ]);
         
-        const batchTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('批量查询超时')), 8000));
+        const batchTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('批量查询超时')), 5000));  // 优化：缩短超时
         const [likesData, favoritesData, userLikes, userFavorites, commentsRes] = await Promise.race([batchPromise, batchTimeout]).catch(() => [null, null, null, null, null]);
         
         // 统计点赞和收藏数
@@ -1581,8 +1587,8 @@ window.clearSearch = async function() {
 };
 
 // ==================== 无限滚动 ====================
-let currentPage = 1; // loadPosts 已加载第1页(30条)，从第2页开始
-const pageSize = 30;
+let currentPage = 1; // loadPosts 已加载第1页(20条)，从第2页开始
+const pageSize = 20;
 let isLoadingMore = false;
 let hasMorePosts = true;
 
