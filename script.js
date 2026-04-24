@@ -23,7 +23,26 @@ async function loadSupabase() {
 }
 
 // 预加载 Supabase（不阻塞 DOMContentLoaded）
-const supabasePromise = loadSupabase();
+// 添加 15 秒超时，给手机和慢网络更多时间
+const supabasePromise = new Promise(async (resolve) => {
+    const timeout = setTimeout(() => {
+        console.error('Supabase 加载超时（15秒），继续运行');
+        supabaseLoadFailed = true;
+        resolve(null);
+    }, 15000);
+    
+    try {
+        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+        clearTimeout(timeout);
+        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        resolve(supabase);
+    } catch (e) {
+        clearTimeout(timeout);
+        console.error('Supabase 加载失败:', e);
+        supabaseLoadFailed = true;
+        resolve(null);
+    }
+});
 
 // ==================== 全局状态 ====================
 let posts = [];
@@ -538,8 +557,10 @@ async function loadPosts() {
     try {
         // 确保 Supabase 已加载
         if (supabaseLoadFailed || !supabase) {
-            console.error('Supabase 未加载，跳过加载帖子');
+            console.error('Supabase 未加载，显示空内容');
             hideSkeleton();
+            posts = [];  // 确保 posts 是空数组
+            renderPosts();  // 显示"还没有分享"的空状态
             return;
         }
         
