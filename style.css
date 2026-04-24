@@ -117,6 +117,10 @@ body {
 }
 
 /* ==================== 骨架屏 ==================== */
+#skeleton-container {
+    display: none; /* 默认隐藏，由 JS 控制显示/隐藏 */
+}
+
 .skeleton {
     background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
     background-size: 200% 100%;
@@ -362,6 +366,12 @@ main {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 30px;
+}
+
+#posts-container {
+    /* 确保内容容器可见 */
+    width: 100%;
+    min-height: 200px;
 }
 
 /* 加载更多按钮 */
