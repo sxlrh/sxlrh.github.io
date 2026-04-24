@@ -86,7 +86,8 @@ async function init() {
         if (!supabaseInstance) {
             // Supabase 加载失败，显示错误但允许显示空内容
             console.error('Supabase 无法加载，页面将显示空内容');
-            hideSkeleton();
+            posts = [];
+            renderPosts();  // 显示空状态
             showToast('数据加载失败，请刷新重试', 'error');
             return;
         }
@@ -659,12 +660,20 @@ function renderPosts() {
     hideSkeleton();
     
     const container = document.getElementById('posts-container');
+    if (!container) {
+        console.error('renderPosts: posts-container 元素不存在！');
+        return;
+    }
+    
     container.innerHTML = '';
     
     if (posts.length === 0) {
+        console.log('renderPosts: 显示空状态提示');
         container.innerHTML = '<p class="no-posts" style="text-align:center;padding:40px;color:#666;">还没有分享，快来发布第一条吧！</p>';
         return;
     }
+    
+    console.log('renderPosts: 渲染', posts.length, '条帖子');
     
     posts.forEach(post => {
         container.appendChild(createPostElement(post));
