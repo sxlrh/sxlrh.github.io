@@ -346,8 +346,13 @@
     <script>
         setTimeout(function() {
             var loader = document.getElementById('loading-overlay');
-            if (loader && loader.style.display !== 'none') {
-                loader.style.display = 'none';
+            var skeleton = document.getElementById('skeleton-container');
+            if (loader) loader.style.display = 'none';
+            if (skeleton) skeleton.style.display = 'none';
+            // 如果 posts-container 还是空的，显示错误提示
+            var postsContainer = document.getElementById('posts-container');
+            if (postsContainer && !postsContainer.hasChildNodes()) {
+                postsContainer.innerHTML = '<p style="text-align:center;padding:40px;color:#666;">加载超时，请刷新重试或检查网络连接</p>';
             }
         }, 10000);
     </script>

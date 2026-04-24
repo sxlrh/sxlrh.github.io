@@ -1,13 +1,29 @@
 // 心灵树洞 - Supabase 版本
 // 使用 Supabase 作为后端数据库和存储
 
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-
 // ==================== Supabase 配置 ====================
 const SUPABASE_URL = 'https://tgadmkpyufqnnciowydo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYWRta3B5dWZxbm5jaW93eWRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMTc3NDUsImV4cCI6MjA5MDc5Mzc0NX0.Vj7cyl0Yqj55ZM4-S66vZ3-uWh6MOfGeKBus706eJow';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// 确保 Supabase 在使用前已加载
+let supabase = null;
+let supabaseLoadFailed = false;
+
+async function loadSupabase() {
+    try {
+        // 等待 ES Module 导入完成
+        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        return supabase;
+    } catch (e) {
+        console.error('Supabase 加载失败:', e);
+        supabaseLoadFailed = true;
+        return null;
+    }
+}
+
+// 预加载 Supabase（不阻塞 DOMContentLoaded）
+const supabasePromise = loadSupabase();
 
 // ==================== 全局状态 ====================
 let posts = [];
@@ -46,6 +62,16 @@ function saveViewedPosts() {
 // ==================== 初始化 ====================
 async function init() {
     try {
+        // 首先确保 Supabase 已加载
+        const supabaseInstance = await supabasePromise;
+        if (!supabaseInstance) {
+            // Supabase 加载失败，显示错误但允许显示空内容
+            console.error('Supabase 无法加载，页面将显示空内容');
+            hideSkeleton();
+            showToast('数据加载失败，请刷新重试', 'error');
+            return;
+        }
+        
         // 并行执行所有初始化操作（不阻塞）
         const savedUser = localStorage.getItem('treeholeUser');
         if (savedUser) {
@@ -510,6 +536,13 @@ async function saveSettings() {
 // ==================== 帖子 ====================
 async function loadPosts() {
     try {
+        // 确保 Supabase 已加载
+        if (supabaseLoadFailed || !supabase) {
+            console.error('Supabase 未加载，跳过加载帖子');
+            hideSkeleton();
+            return;
+        }
+        
         // 记录本次刷新时间，防止实时订阅循环
         _lastRefreshTime = Date.now();
         
