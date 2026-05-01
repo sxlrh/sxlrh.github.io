@@ -10,6 +10,21 @@ function debugLog(msg) {
     }
 }
 
+// 安全存储用户信息到 localStorage（避免微信浏览器配额限制）
+function saveUserToStorage(user) {
+    const minimalUser = {
+        id: user.id,
+        username: user.username,
+        nickname: user.nickname || user.username,
+        avatar: user.avatar
+    };
+    try {
+        localStorage.setItem('treeholeUser', JSON.stringify(minimalUser));
+    } catch (e) {
+        console.warn('localStorage 写入失败（可能配额已满）:', e);
+    }
+}
+
 // ==================== Supabase 配置 ====================
 const SUPABASE_URL = 'https://tgadmkpyufqnnciowydo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYWRta3B5dWZxbm5jaW93eWRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMTc3NDUsImV4cCI6MjA5MDc5Mzc0NX0.Vj7cyl0Yqj55ZM4-S66vZ3-uWh6MOfGeKBus706eJow';
@@ -69,11 +84,14 @@ function loadViewedPosts() {
     }
 }
 
-// 保存浏览记录
+// 保存浏览记录（限制最多500条，避免 localStorage 配额超限）
 function saveViewedPosts() {
     if (!currentUser) return;
     try {
-        localStorage.setItem(`viewed_${currentUser.id}`, JSON.stringify([...viewedPosts]));
+        const postsArray = [...viewedPosts];
+        // 只保留最近500条浏览记录
+        const limited = postsArray.length > 500 ? postsArray.slice(-500) : postsArray;
+        localStorage.setItem(`viewed_${currentUser.id}`, JSON.stringify(limited));
     } catch (e) {
         console.error('保存浏览记录失败:', e);
     }
@@ -330,7 +348,14 @@ async function login() {
         }
         
         currentUser = data;
-        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        // 只存储必要字段，避免 localStorage 配额超限（微信浏览器限制更严格）
+        const minimalUser = {
+            id: data.id,
+            username: data.username,
+            nickname: data.nickname,
+            avatar: data.avatar
+        };
+        saveUserToStorage(currentUser);
         updateUserInfo();
         loadViewedPosts();
         checkNotificationCount();
@@ -412,7 +437,7 @@ async function register() {
         }
         
         currentUser = { id: userId, username, avatar };
-        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        saveUserToStorage(currentUser);
         
         updateUserInfo();
         loadViewedPosts();
@@ -477,7 +502,7 @@ async function quickRegister(username, color) {
         }
         
         currentUser = { id: userId, username, avatar };
-        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        saveUserToStorage(currentUser);
         
         updateUserInfo();
         hideAuthModal();
@@ -563,7 +588,7 @@ async function saveSettings() {
         // 更新本地用户信息
         currentUser.username = username;
         currentUser.avatar = avatar;
-        localStorage.setItem('treeholeUser', JSON.stringify(currentUser));
+        saveUserToStorage(currentUser);
         
         updateUserInfo();
         document.getElementById('settings-modal').style.display = 'none';
