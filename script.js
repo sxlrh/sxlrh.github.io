@@ -12,16 +12,34 @@ function debugLog(msg) {
 
 // 安全存储用户信息到 localStorage（避免微信浏览器配额限制）
 function saveUserToStorage(user) {
+    // 如果 avatar 是 base64 或太长，只保留前100字符或清空
+    let avatar = user.avatar || '';
+    if (avatar.length > 200) {
+        avatar = avatar.substring(0, 200); // 截断长URL/base64
+    }
     const minimalUser = {
         id: user.id,
         username: user.username,
         nickname: user.nickname || user.username,
-        avatar: user.avatar
+        avatar: avatar
     };
     try {
         localStorage.setItem('treeholeUser', JSON.stringify(minimalUser));
     } catch (e) {
         console.warn('localStorage 写入失败（可能配额已满）:', e);
+        // 如果仍然失败，尝试清理其他数据后再存
+        try {
+            // 清理旧的浏览记录
+            for (let key in localStorage) {
+                if (key.startsWith('viewed_')) {
+                    localStorage.removeItem(key);
+                }
+            }
+            // 再试一次
+            localStorage.setItem('treeholeUser', JSON.stringify(minimalUser));
+        } catch (e2) {
+            console.error('清理后仍然无法写入 localStorage:', e2);
+        }
     }
 }
 
@@ -355,11 +373,35 @@ async function login() {
             nickname: data.nickname,
             avatar: data.avatar
         };
-        saveUserToStorage(currentUser);
+        
+        // 安全执行 localStorage 相关操作，失败不阻断登录
+        try {
+            saveUserToStorage(currentUser);
+        } catch (e) {
+            console.warn('保存用户信息到 localStorage 失败:', e);
+        }
+        
         updateUserInfo();
-        loadViewedPosts();
-        checkNotificationCount();
-        subscribeToNotifications(); // 启动实时通知
+        
+        // 这些操作可能涉及 localStorage，单独捕获错误
+        try {
+            loadViewedPosts();
+        } catch (e) {
+            console.warn('加载浏览记录失败:', e);
+        }
+        
+        try {
+            checkNotificationCount();
+        } catch (e) {
+            console.warn('检查通知失败:', e);
+        }
+        
+        try {
+            subscribeToNotifications(); // 启动实时通知
+        } catch (e) {
+            console.warn('订阅通知失败:', e);
+        }
+        
         hideAuthModal();
         showToast('登录成功', 'success');
         
