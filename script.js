@@ -662,9 +662,9 @@ async function loadPosts() {
         // 记录本次刷新时间，防止实时订阅循环
         _lastRefreshTime = Date.now();
         
-        // 优化：增加超时时间，避免网络慢时超时
+        // 优化：增加超时时间（微信内置浏览器网络慢，给20秒）
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('请求超时')), 15000)
+            setTimeout(() => reject(new Error('帖子加载超时，请下拉刷新')), 20000)
         );
         
         const postsPromise = supabase
@@ -700,7 +700,8 @@ async function loadPosts() {
             supabase.from('comments').select('*').in('post_id', postIds).order('created_at', { ascending: true })
         ]);
         
-        const batchTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('批量查询超时')), 5000));  // 优化：缩短超时
+        // 批量查询超时（微信浏览器网络慢，增加到15秒）
+        const batchTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('批量查询超时')), 15000));
         const [likesData, favoritesData, userLikes, userFavorites, commentsRes] = await Promise.race([batchPromise, batchTimeout]).catch(() => [null, null, null, null, null]);
         
         // 统计点赞和收藏数
