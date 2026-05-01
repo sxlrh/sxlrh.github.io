@@ -8,8 +8,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // ==================== Supabase 初始化 ====================
 // 使用本地 UMD 版本（lib/supabase.min.js），不依赖 CDN import
 // 微信内置浏览器无法加载 CDN ES Module，本地文件最可靠
-let supabase = null;
-let supabaseLoadFailed = false;
+// 注意：supabase变量由lib/supabase.min.js(UMD)声明，这里不再重复声明
+var supabaseLoadFailed = false;
 
 function initSupabase() {
     console.log('[琳琳调试] initSupabase() 被调用, typeof window.supabase =', typeof window.supabase, ', createClient exists?', !!(window.supabase && window.supabase.createClient));
