@@ -2368,7 +2368,17 @@ function unsubscribeFromNotifications() {
 }
 
 // ==================== 启动 ====================
-window.addEventListener('DOMContentLoaded', () => {
+// 注意：script.js 现在是普通 <script>（非 module），放在 body 底部
+// 此时 DOM 已经解析完毕，DOMContentLoaded 可能已经触发
+// 所以用 readyState 检查，避免错过事件
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', onReady);
+} else {
+    // DOM 已就绪，直接执行
+    onReady();
+}
+
+function onReady() {
     init();
     
     // 延迟设置无限滚动和下拉刷新
@@ -2381,4 +2391,4 @@ window.addEventListener('DOMContentLoaded', () => {
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
     }
-});
+}
