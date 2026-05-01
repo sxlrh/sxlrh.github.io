@@ -1791,7 +1791,6 @@ async function loadMorePosts() {
             
             // 获取点赞、收藏和评论（批量优化）
             const postIds = data.map(p => p.id);
-            const postIds = data.map(p => p.id);
             
             // 批量查询也加超时保护（微信浏览器网络差）
             const batchPromise = Promise.all([
