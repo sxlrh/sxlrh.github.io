@@ -341,7 +341,9 @@
         </div>
     </footer>
 
-    <script type="module" src="script.js"></script>
+    <!-- 本地 Supabase SDK（微信内置浏览器兼容，不依赖CDN） -->
+    <script src="lib/supabase.min.js"></script>
+    <script src="script.js"></script>
     <!-- 安全网：如果 JS 10秒还没加载完，强制关闭加载遮罩 -->
     <script>
         setTimeout(function() {

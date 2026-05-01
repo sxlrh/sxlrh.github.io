@@ -5,66 +5,34 @@
 const SUPABASE_URL = 'https://tgadmkpyufqnnciowydo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYWRta3B5dWZxbm5jaW93eWRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMTc3NDUsImV4cCI6MjA5MDc5Mzc0NX0.Vj7cyl0Yqj55ZM4-S66vZ3-uWh6MOfGeKBus706eJow';
 
-// 确保 Supabase 在使用前已加载
+// ==================== Supabase 初始化 ====================
+// 使用本地 UMD 版本（lib/supabase.min.js），不依赖 CDN import
+// 微信内置浏览器无法加载 CDN ES Module，本地文件最可靠
 let supabase = null;
 let supabaseLoadFailed = false;
 
-async function loadSupabase() {
-    // 复用 supabasePromise（已有多CDN fallback）
-    const client = await supabasePromise;
-    if (client) {
-        return client;
-    }
-    // 如果预加载也失败了，再尝试一次快速fallback
-    console.warn('预加载失败，尝试直接加载...');
+function initSupabase() {
     try {
-        const { createClient } = await import('https://unpkg.com/@supabase/supabase-js@2/dist/module/index.js');
-        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        return supabase;
+        // window.supabase 是 UMD 包暴露的全局对象
+        if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            console.log('Supabase SDK 加载成功（本地 UMD）');
+        } else {
+            console.error('Supabase SDK 未找到：window.supabase 不存在或缺少 createClient');
+            supabaseLoadFailed = true;
+        }
     } catch (e) {
-        console.error('Supabase 加载失败:', e);
+        console.error('Supabase 初始化失败:', e);
         supabaseLoadFailed = true;
-        return null;
     }
 }
 
-// 预加载 Supabase（不阻塞 DOMDOMContentLoaded）
-// 多 CDN fallback：jsdelivr → unpkg → cdnjs（微信内置浏览器兼容）
-// 每个CDN单独8秒超时，总计最多24秒
-const SUPABASE_CDN_URLS = [
-    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm',
-    'https://unpkg.com/@supabase/supabase-js@2/dist/module/index.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.44.0/index.module.min.js'
-];
-
-const supabasePromise = (async () => {
-    for (let i = 0; i < SUPABASE_CDN_URLS.length; i++) {
-        const cdnUrl = SUPABASE_CDN_URLS[i];
-        console.log(`尝试加载 Supabase SDK (CDN ${i + 1}/${SUPABASE_CDN_URLS.length}): ${cdnUrl}`);
-        
-        try {
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error(`CDN ${i + 1} 超时`)), 8000)
-            );
-            
-            const { createClient } = await Promise.race([
-                import(cdnUrl),
-                timeoutPromise
-            ]);
-            
-            console.log(`Supabase SDK 加载成功 (CDN ${i + 1})`);
-            supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            return supabase;
-        } catch (e) {
-            console.warn(`CDN ${i + 1} 加载失败:`, e.message || e);
-            continue;
-        }
-    }
-    
-    console.error('所有 CDN 均失败，Supabase 不可用');
-    supabaseLoadFailed = true;
-    return null;
-})();
+// 不再需要 async loadSupabase，直接同步初始化
+async function loadSupabase() {
+    if (supabase) return supabase;
+    initSupabase();
+    return supabase;
+}
 
 // ==================== 全局状态 ====================
 let posts = [];
@@ -105,11 +73,11 @@ async function init() {
     // 首先显示骨架屏（确保等待 Supabase 时用户看到加载状态）
     showSkeleton();
     try {
-        // 首先确保 Supabase 已加载
-        const supabaseInstance = await supabasePromise;
-        if (!supabaseInstance) {
-            // Supabase 加载失败，显示错误但允许显示空内容
-            console.error('Supabase 无法加载，页面将显示空内容');
+        // 初始化 Supabase（本地 UMD，同步即可）
+        initSupabase();
+        if (!supabase) {
+            // Supabase 初始化失败，显示错误但允许显示空内容
+            console.error('Supabase 无法初始化，页面将显示空内容');
             posts = [];
             renderPosts();  // 显示空状态
             showToast('数据加载失败，请刷新重试', 'error');
