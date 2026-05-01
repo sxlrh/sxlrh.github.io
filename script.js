@@ -586,12 +586,17 @@ async function loadPosts() {
             .order('created_at', { ascending: false })
             .limit(20);  // 优化：减少初始加载数量，从30减少到20
         
-        const { data } = await Promise.race([
+        const { data, error } = await Promise.race([
             postsPromise,
             timeoutPromise
-        ]).catch(() => ({ data: null }));
+        ]).catch((e) => ({ data: null, error: e }));
+        
+        if (error) {
+            console.error('[琳琳调试] 查询posts表失败:', error);
+        }
         
         if (!data || data.length === 0) {
+            console.log('[琳琳调试] posts查询结果为空, data=', data, 'error=', error);
             posts = [];
             renderPosts();
             return;
