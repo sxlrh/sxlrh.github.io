@@ -1,6 +1,15 @@
 // 心灵树洞 - Supabase 版本
 // 使用 Supabase 作为后端数据库和存储
 
+// ==================== 调试工具 ====================
+function debugLog(msg) {
+    console.log('[琳琳调试]', msg);
+    const panel = document.getElementById('debug-log');
+    if (panel) {
+        panel.textContent += new Date().toLocaleTimeString() + ' ' + msg + '\n';
+    }
+}
+
 // ==================== Supabase 配置 ====================
 const SUPABASE_URL = 'https://tgadmkpyufqnnciowydo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYWRta3B5dWZxbm5jaW93eWRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMTc3NDUsImV4cCI6MjA5MDc5Mzc0NX0.Vj7cyl0Yqj55ZM4-S66vZ3-uWh6MOfGeKBus706eJow';
@@ -12,6 +21,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 var supabaseLoadFailed = false;
 
 function initSupabase() {
+    debugLog('initSupabase() 被调用, typeof window.supabase=' + typeof window.supabase);
     console.log('[琳琳调试] initSupabase() 被调用, typeof window.supabase =', typeof window.supabase, ', createClient exists?', !!(window.supabase && window.supabase.createClient));
     try {
         // window.supabase 是 UMD 包暴露的全局对象
@@ -280,6 +290,7 @@ async function login() {
     }
     
     // 检查 Supabase 是否可用
+    debugLog('login() 开始, supabase=' + typeof supabase + ', supabaseLoadFailed=' + supabaseLoadFailed);
     console.log('[琳琳调试] login() 开始, supabase=', typeof supabase, 'supabaseLoadFailed=', supabaseLoadFailed);
     if (!supabase || supabaseLoadFailed) {
         showToast('网络连接失败，请稍后重试或刷新页面', 'error');
@@ -302,9 +313,11 @@ async function login() {
             .single();
         
         const { data, error } = await Promise.race([loginPromise, timeoutPromise]);
+        debugLog('登录查询结果: data=' + (data ? '有' : '无') + ' error=' + (error ? error.message : '无'));
         console.log('[琳琳调试] 登录查询结果:', 'data=', data, 'error=', error);
         
         if (error || !data) {
+            debugLog('登录失败: ' + (error ? error.message : '用户名不存在'));
             console.log('[琳琳调试] 用户名不存在或查询错误:', error);
             showToast('用户名不存在', 'error');
             return;
@@ -326,6 +339,7 @@ async function login() {
         showToast('登录成功', 'success');
         
     } catch (error) {
+        debugLog('登录异常: ' + (error?.message || '未知错误'));
         console.error('[琳琳调试] 登录失败详情:', error);
         console.error('[琳琳调试] 错误类型:', error?.name);
         console.error('[琳琳调试] 错误消息:', error?.message);
