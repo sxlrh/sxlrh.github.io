@@ -280,10 +280,12 @@ async function login() {
     }
     
     // 检查 Supabase 是否可用
+    console.log('[琳琳调试] login() 开始, supabase=', typeof supabase, 'supabaseLoadFailed=', supabaseLoadFailed);
     if (!supabase || supabaseLoadFailed) {
         showToast('网络连接失败，请稍后重试或刷新页面', 'error');
         return;
     }
+    console.log('[琳琳调试] supabase 对象存在, from方法=', typeof supabase.from);
     
     showLoading(true);
     
@@ -300,8 +302,10 @@ async function login() {
             .single();
         
         const { data, error } = await Promise.race([loginPromise, timeoutPromise]);
+        console.log('[琳琳调试] 登录查询结果:', 'data=', data, 'error=', error);
         
         if (error || !data) {
+            console.log('[琳琳调试] 用户名不存在或查询错误:', error);
             showToast('用户名不存在', 'error');
             return;
         }
@@ -322,8 +326,10 @@ async function login() {
         showToast('登录成功', 'success');
         
     } catch (error) {
-        console.error('登录失败:', error);
-        showToast('登录失败，请重试', 'error');
+        console.error('[琳琳调试] 登录失败详情:', error);
+        console.error('[琳琳调试] 错误类型:', error?.name);
+        console.error('[琳琳调试] 错误消息:', error?.message);
+        showToast('登录失败: ' + (error?.message || '请重试'), 'error');
     } finally {
         showLoading(false);
     }
