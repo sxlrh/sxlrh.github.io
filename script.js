@@ -1791,13 +1791,24 @@ async function loadMorePosts() {
             
             // 获取点赞、收藏和评论（批量优化）
             const postIds = data.map(p => p.id);
-            const [likesRes, favoritesRes, userLikesRes, userFavsRes, commentsRes] = await Promise.all([
+            const postIds = data.map(p => p.id);
+            
+            // 批量查询也加超时保护（微信浏览器网络差）
+            const batchPromise = Promise.all([
                 supabase.from('likes').select('post_id', { count: 'exact' }).in('post_id', postIds),
                 supabase.from('favorites').select('post_id', { count: 'exact' }).in('post_id', postIds),
                 currentUser ? supabase.from('likes').select('post_id').in('post_id', postIds).eq('user_id', currentUser.id) : Promise.resolve({ data: [] }),
                 currentUser ? supabase.from('favorites').select('post_id').in('post_id', postIds).eq('user_id', currentUser.id) : Promise.resolve({ data: [] }),
                 supabase.from('comments').select('*').in('post_id', postIds)
             ]);
+            const batchTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('批量查询超时')), 15000));
+            
+            let [likesRes, favoritesRes, userLikesRes, userFavsRes, commentsRes] = [null, null, null, null, null];
+            try {
+                [likesRes, favoritesRes, userLikesRes, userFavsRes, commentsRes] = await Promise.race([batchPromise, batchTimeout]);
+            } catch (e) {
+                console.warn('[琳琳调试] loadMorePosts批量查询超时，但帖子已加载:', e.message);
+            }
 
             const userLikeSet = new Set((userLikesRes.data || []).map(l => l.post_id));
             const userFavSet = new Set((userFavsRes.data || []).map(f => f.post_id));
