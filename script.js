@@ -12,6 +12,7 @@ let supabase = null;
 let supabaseLoadFailed = false;
 
 function initSupabase() {
+    console.log('[琳琳调试] initSupabase() 被调用, typeof window.supabase =', typeof window.supabase, ', createClient exists?', !!(window.supabase && window.supabase.createClient));
     try {
         // window.supabase 是 UMD 包暴露的全局对象
         if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
@@ -70,6 +71,7 @@ function saveViewedPosts() {
 
 // ==================== 初始化 ====================
 async function init() {
+    console.log('[琳琳调试] init() 开始执行');
     // 首先显示骨架屏（确保等待 Supabase 时用户看到加载状态）
     showSkeleton();
     try {
@@ -233,6 +235,7 @@ function bindEvents() {
 }
 
 function bindAuthEvents() {
+    console.log('[琳琳调试] bindAuthEvents() 被调用');
     document.getElementById('login-btn')?.addEventListener('click', showAuthModal);
     document.querySelectorAll('.close-btn').forEach(btn => {
         btn.addEventListener('click', function() { this.closest('.modal').style.display = 'none'; });
@@ -2379,6 +2382,7 @@ if (document.readyState === 'loading') {
 }
 
 function onReady() {
+    console.log('[琳琳调试] onReady() 被调用, readyState =', document.readyState);
     init();
     
     // 延迟设置无限滚动和下拉刷新

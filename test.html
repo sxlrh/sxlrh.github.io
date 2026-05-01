@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test</title></head>
+<body>
+<h1>Supabase Loading Test</h1>
+<pre id="log"></pre>
+<script src="lib/supabase.min.js"></script>
+<script>
+var logEl = document.getElementById('log');
+function log(msg) { logEl.textContent += msg + '\n'; }
+
+log('Step 1: typeof window.supabase = ' + typeof window.supabase);
+log('Step 2: window.supabase.createClient exists? ' + !!(window.supabase && window.supabase.createClient));
+
+// Now simulate what script.js does
+let supabase = null;
+log('Step 3: After let supabase = null, typeof window.supabase = ' + typeof window.supabase);
+log('Step 4: window.supabase.createClient still exists? ' + !!(window.supabase && window.supabase.createClient));
+
+function initSupabase() {
+    try {
+        if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+            supabase = window.supabase.createClient('https://test.supabase.co', 'test-key');
+            log('Step 5: supabase initialized successfully');
+        } else {
+            log('Step 5: FAILED - window.supabase not found or no createClient');
+        }
+    } catch (e) {
+        log('Step 5: ERROR - ' + e.message);
+    }
+}
+
+initSupabase();
+log('Step 6: supabase variable = ' + (supabase ? 'object' : 'null'));
+</script>
+</body>
+</html>
