@@ -10,9 +10,15 @@ let supabase = null;
 let supabaseLoadFailed = false;
 
 async function loadSupabase() {
+    // 复用 supabasePromise（已有多CDN fallback）
+    const client = await supabasePromise;
+    if (client) {
+        return client;
+    }
+    // 如果预加载也失败了，再尝试一次快速fallback
+    console.warn('预加载失败，尝试直接加载...');
     try {
-        // 等待 ES Module 导入完成
-        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+        const { createClient } = await import('https://unpkg.com/@supabase/supabase-js@2/dist/module/index.js');
         supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         return supabase;
     } catch (e) {
@@ -22,27 +28,43 @@ async function loadSupabase() {
     }
 }
 
-// 预加载 Supabase（不阻塞 DOMContentLoaded）
-// 添加 15 秒超时，给手机和慢网络更多时间
-const supabasePromise = new Promise(async (resolve) => {
-    const timeout = setTimeout(() => {
-        console.error('Supabase 加载超时（15秒），继续运行');
-        supabaseLoadFailed = true;
-        resolve(null);
-    }, 15000);
-    
-    try {
-        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-        clearTimeout(timeout);
-        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        resolve(supabase);
-    } catch (e) {
-        clearTimeout(timeout);
-        console.error('Supabase 加载失败:', e);
-        supabaseLoadFailed = true;
-        resolve(null);
+// 预加载 Supabase（不阻塞 DOMDOMContentLoaded）
+// 多 CDN fallback：jsdelivr → unpkg → cdnjs（微信内置浏览器兼容）
+// 每个CDN单独8秒超时，总计最多24秒
+const SUPABASE_CDN_URLS = [
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm',
+    'https://unpkg.com/@supabase/supabase-js@2/dist/module/index.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.44.0/index.module.min.js'
+];
+
+const supabasePromise = (async () => {
+    for (let i = 0; i < SUPABASE_CDN_URLS.length; i++) {
+        const cdnUrl = SUPABASE_CDN_URLS[i];
+        console.log(`尝试加载 Supabase SDK (CDN ${i + 1}/${SUPABASE_CDN_URLS.length}): ${cdnUrl}`);
+        
+        try {
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error(`CDN ${i + 1} 超时`)), 8000)
+            );
+            
+            const { createClient } = await Promise.race([
+                import(cdnUrl),
+                timeoutPromise
+            ]);
+            
+            console.log(`Supabase SDK 加载成功 (CDN ${i + 1})`);
+            supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            return supabase;
+        } catch (e) {
+            console.warn(`CDN ${i + 1} 加载失败:`, e.message || e);
+            continue;
+        }
     }
-});
+    
+    console.error('所有 CDN 均失败，Supabase 不可用');
+    supabaseLoadFailed = true;
+    return null;
+})();
 
 // ==================== 全局状态 ====================
 let posts = [];
@@ -80,6 +102,8 @@ function saveViewedPosts() {
 
 // ==================== 初始化 ====================
 async function init() {
+    // 首先显示骨架屏（确保等待 Supabase 时用户看到加载状态）
+    showSkeleton();
     try {
         // 首先确保 Supabase 已加载
         const supabaseInstance = await supabasePromise;
@@ -284,6 +308,12 @@ async function login() {
         return;
     }
     
+    // 检查 Supabase 是否可用
+    if (!supabase || supabaseLoadFailed) {
+        showToast('网络连接失败，请稍后重试或刷新页面', 'error');
+        return;
+    }
+    
     showLoading(true);
     
     try {
@@ -335,6 +365,12 @@ async function register() {
     
     if (!username || !password || !confirmPassword) {
         showToast('请填写所有字段', 'error');
+        return;
+    }
+    
+    // 检查 Supabase 是否可用
+    if (!supabase || supabaseLoadFailed) {
+        showToast('网络连接失败，请稍后重试或刷新页面', 'error');
         return;
     }
     
@@ -1806,6 +1842,14 @@ function setupPullRefresh() {
             pullRefresh.classList.remove('active');
         }
     });
+}
+
+// ==================== 显示骨架屏 ====================
+function showSkeleton() {
+    const skeletonContainer = document.getElementById('skeleton-container');
+    if (skeletonContainer) {
+        skeletonContainer.style.display = 'block';
+    }
 }
 
 // ==================== 隐藏骨架屏 ====================
