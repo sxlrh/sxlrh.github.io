@@ -337,9 +337,9 @@ async function login() {
     showLoading(true);
     
     try {
-        // 设置超时
+        // 设置超时（微信内置浏览器网络较慢，给20秒）
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('登录超时')), 8000)
+            setTimeout(() => reject(new Error('登录超时，请检查网络后重试')), 20000)
         );
         
         const loginPromise = supabase
@@ -453,9 +453,9 @@ async function register() {
         const userId = generateId();
         const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff&size=128`;
         
-        // 设置超时
+        // 设置超时（微信内置浏览器网络较慢，给20秒）
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('注册超时')), 8000)
+            setTimeout(() => reject(new Error('注册超时，请检查网络后重试')), 20000)
         );
         
         const insertPromise = supabase
