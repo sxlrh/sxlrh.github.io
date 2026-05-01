@@ -575,16 +575,16 @@ async function loadPosts() {
         // 记录本次刷新时间，防止实时订阅循环
         _lastRefreshTime = Date.now();
         
-        // 优化：缩短超时时间，加快错误检测
+        // 优化：增加超时时间，避免网络慢时超时
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('请求超时')), 5000)
+            setTimeout(() => reject(new Error('请求超时')), 15000)
         );
         
         const postsPromise = supabase
             .from('posts')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(20);  // 优化：减少初始加载数量，从30减少到20
+            .limit(10);  // 优化：减少初始加载数量，从30减少到10，加快查询速度
         
         const { data, error } = await Promise.race([
             postsPromise,
