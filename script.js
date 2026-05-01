@@ -1767,13 +1767,24 @@ async function loadMorePosts() {
     }
     
     try {
-        const { data, error } = await supabase
+        // loadMorePosts 也加超时保护（微信浏览器网络慢）
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('加载更多超时')), 20000)
+        );
+        
+        const loadMorePromise = supabase
             .from('posts')
             .select('*')
             .order('created_at', { ascending: false })
             .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
         
-        if (error) throw error;
+        const { data, error } = await Promise.race([loadMorePromise, timeoutPromise]).catch(e => ({ data: null, error: e }));
+        
+        if (error) {
+            console.error('[琳琳调试] loadMorePosts查询失败:', error);
+            hasMorePosts = false;
+            return;
+        }
         
         if (data && data.length > 0) {
             currentPage++;
