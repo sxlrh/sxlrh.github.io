@@ -1751,8 +1751,8 @@ window.clearSearch = async function() {
 };
 
 // ==================== 无限滚动 ====================
-let currentPage = 1; // loadPosts 已加载第1页(20条)，从第2页开始
-const pageSize = 20;
+let loadedCount = 10; // loadPosts 用 limit(10) 加载了10条，从这里继续
+const pageSize = 10; // 每页加载条数，与初始加载一致
 let isLoadingMore = false;
 let hasMorePosts = true;
 
@@ -1776,7 +1776,7 @@ async function loadMorePosts() {
             .from('posts')
             .select('*')
             .order('created_at', { ascending: false })
-            .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+            .range(loadedCount, loadedCount + pageSize - 1);
         
         const { data, error } = await Promise.race([loadMorePromise, timeoutPromise]).catch(e => ({ data: null, error: e }));
         
@@ -1787,7 +1787,7 @@ async function loadMorePosts() {
         }
         
         if (data && data.length > 0) {
-            currentPage++;
+            loadedCount += data.length;
             
             // 获取点赞、收藏和评论（批量优化）
             const postIds = data.map(p => p.id);
